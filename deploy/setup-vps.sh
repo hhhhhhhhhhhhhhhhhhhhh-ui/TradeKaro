@@ -134,9 +134,12 @@ systemctl is-active tradekaro && echo "tradekaro is running" || echo "tradekaro 
 cat <<EOF
 
 Next steps
-  1. Point $DOMAIN's A record at this server, then get a certificate:
-       apt-get install -y certbot python3-certbot-nginx
-       certbot --nginx -d $DOMAIN
+  1. Point $DOMAIN's A record at this server, then turn on HTTPS:
+       bash $APP_DIR/deploy/enable-tls.sh
+     Read the header of that script first — it takes either a Cloudflare Origin
+     Certificate or a Cloudflare API token, and explains why plain
+     \`certbot --nginx\` cannot work while Cloudflare proxies the domain
+     (Cloudflare answers port 80 itself and 301s the ACME challenge).
   2. Confirm the app answers:
        curl -fsS http://127.0.0.1:3000/api/market/stats | head -c 200
   3. Read the bootstrap admin password if you left ADMIN_PASSWORD blank:
