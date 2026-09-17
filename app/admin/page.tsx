@@ -2923,7 +2923,7 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
         (!needle ||
           // Must include phone: the server matches on it, so dropping it here
           // threw away every row a mobile-number search returned.
-          `${u.username || ""} ${u.email || ""} ${u.phone || ""} ${u.clientID || ""} ${u.id}`
+          `${u.username || ""} ${u.email || ""} ${u.phone || ""} ${u.clientID || ""} ${u.clientCode || ""} ${u.id}`
             .toLowerCase()
             .includes(needle)),
     );
@@ -3166,7 +3166,14 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                     ) : null}
                   </td>
                   <td className={`${tdCls} font-mono text-foreground/80`}>
-                    {u.clientID || "—"}
+                    {/* The code is what the customer quotes; the raw id stays
+                        underneath so an operator can still match a log line. */}
+                    <div className="font-semibold text-foreground">
+                      {u.clientCode || "—"}
+                    </div>
+                    <div className="text-[10.5px] text-muted-foreground/60">
+                      {u.clientCode ? u.clientID : ""}
+                    </div>
                     <div className="text-[11px] text-muted-foreground/70">
                       {u.logins ? `${u.logins} visits` : ""}
                     </div>
@@ -3307,7 +3314,7 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                       {sel.username || sel.email || sel.id}
                     </div>
                     <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                      {sel.email || "—"} · {sel.clientID || "no client ID"} ·{" "}
+                      {sel.email || "—"} · {sel.clientCode || "no client ID"} ·{" "}
                       {sel.logins || 1} visits
                     </div>
                   </div>

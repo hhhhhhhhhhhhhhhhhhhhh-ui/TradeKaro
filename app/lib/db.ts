@@ -1,6 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
+import { codesInUse, generateClientCode } from "./clientCode";
 
 // ── Central SQLite database ───────────────────────────────────────────────
 // One atomic, crash-safe file (data/trade.db, WAL mode) behind every store:
@@ -13,7 +14,7 @@ const g = globalThis as any;
 // Bump whenever a table or index is added below. Next dev reuses the cached
 // handle across hot reloads, so the revision check re-applies this idempotent
 // DDL and new tables exist without restarting the server.
-const SCHEMA_REV = 6;
+const SCHEMA_REV = 7;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -27,7 +28,8 @@ const SCHEMA = `
       phone TEXT,
       pass_hash TEXT NOT NULL,
       salt TEXT NOT NULL,
-      created_at INTEGER NOT NULL
+      created_at INTEGER NOT NULL,
+      client_code TEXT
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ux_users_name ON users(lower(username));
     CREATE UNIQUE INDEX IF NOT EXISTS ux_users_mail ON users(lower(email));
@@ -167,6 +169,52 @@ function ensureColumns(db: DatabaseSync) {
   // a plain UNIQUE index would do (empty strings compare equal).
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_phone ON users(phone)
     WHERE phone IS NOT NULL AND phone <> ''`);
+
+  // Display-only broker-style account number (TK267X9Q4). Separate from `id`,
+  // which is the primary key AND the ledger key every fill is filed under.
+  if (!cols.has("client_code"))
+    db.exec("ALTER TABLE users ADD COLUMN client_code TEXT");
+  // Partial for the same reason as the phone index: accounts created before
+  // the backfill below have NULL, and NULL must not collide with NULL.
+  db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_client_code
+    ON users(client_code) WHERE client_code IS NOT NULL AND client_code <> ''`);
+  backfillClientCodes(db);
+}
+
+/**
+ * Give every pre-existing account a client code.
+ *
+ * Lazy rather than a one-off script: it runs on boot, is a single no-op SELECT
+ * once everything has a code, and cannot be forgotten during a deploy. The year
+ * comes from the account's own signup date, so a backfilled code still reads as
+ * a true opening year instead of the day you happened to upgrade.
+ */
+function backfillClientCodes(db: DatabaseSync) {
+  const missing = db
+    .prepare(
+      "SELECT id, created_at FROM users WHERE client_code IS NULL OR client_code = ''",
+    )
+    .all() as { id: string; created_at: number }[];
+  if (!missing.length) return;
+
+  const taken = codesInUse(
+    db
+      .prepare(
+        "SELECT client_code FROM users WHERE client_code IS NOT NULL AND client_code <> ''",
+      )
+      .all() as { client_code: string }[],
+  );
+
+  const set = db.prepare("UPDATE users SET client_code = ? WHERE id = ?");
+  for (const u of missing) {
+    const year = new Date(Number(u.created_at) || Date.now()).getUTCFullYear();
+    const code = generateClientCode(year, taken);
+    taken.add(code);
+    set.run(code, u.id);
+  }
+  console.log(
+    `[db] assigned client codes to ${missing.length} existing account(s)`,
+  );
 }
 
 function open(): DatabaseSync {

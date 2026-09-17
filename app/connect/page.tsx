@@ -30,6 +30,8 @@ import { sileo } from "sileo";
 type Standing = {
   userId: string;
   clientID: string;
+  /** Broker-style display ID (TK267X9Q4) — what the user should recognise. */
+  clientCode?: string;
   username: string;
   email: string;
   kyc: string;
@@ -121,6 +123,9 @@ export default function ConnectPage() {
   const kycDone = standing?.kyc === "VERIFIED";
   const frozen = standing?.status === "FROZEN";
   const ready = Boolean(standing?.unlocked);
+  // The broker-style code is what the customer recognises. Older sessions have
+  // no code yet, so fall back to the raw id rather than showing a blank.
+  const clientCode = standing?.clientCode || "";
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-24 md:pb-16">
@@ -171,14 +176,16 @@ export default function ConnectPage() {
                 icon={<FiUser size={17} aria-hidden />}
                 label={
                   <span className="font-mono tracking-wide">
-                    {loading ? "—" : standing?.clientID || "—"}
+                    {loading ? "—" : clientCode || standing?.clientID || "—"}
                   </span>
                 }
                 sub="User ID — paste this first"
                 badge={
                   loading ? null : (
                     <button
-                      onClick={() => standing && copy(standing.clientID, "id")}
+                      onClick={() =>
+                        standing && copy(clientCode || standing.clientID, "id")
+                      }
                       aria-label="Copy user ID"
                       className="pressable shrink-0 rounded-md border border-border p-2 text-muted-foreground transition-colors hover:text-foreground"
                     >

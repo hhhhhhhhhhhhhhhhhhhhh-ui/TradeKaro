@@ -5,7 +5,13 @@ import { deleteCookie, getCookie } from "cookies-next";
 // Signing out has to clear every cookie the login route sets, not just the
 // token: a stale `username` / `email` / `clientID` left behind is what the
 // navbar reads to decide it should still show your initials.
-const SESSION_COOKIES = ["token", "username", "email", "clientID"];
+const SESSION_COOKIES = [
+  "token",
+  "username",
+  "email",
+  "clientID",
+  "clientCode",
+];
 
 export default function Logout() {
   useEffect(() => {

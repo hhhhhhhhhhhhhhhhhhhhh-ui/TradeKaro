@@ -30,6 +30,7 @@ async function context(req: NextRequest) {
   return {
     userId: String(user.id),
     clientID: dir?.clientID || String(user.id),
+    clientCode: user.clientCode || dir?.clientCode || "",
     username: user.username,
     email: user.email,
     kyc,

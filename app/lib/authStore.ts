@@ -2,6 +2,7 @@ import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "crypto";
 import { promises as fs } from "fs";
 import path from "path";
 import { db } from "./db";
+import { codesInUse, generateClientCode } from "./clientCode";
 import { normalisePhone } from "./phone";
 
 // Self-hosted account store on the central SQLite database (data/trade.db).
@@ -11,6 +12,8 @@ import { normalisePhone } from "./phone";
 
 export type User = {
   id: string;
+  /** Broker-style display ID (TK267X9Q4). Never used as a key. */
+  clientCode: string;
   username: string;
   email: string;
   /** Bare 10-digit Indian mobile, or "" when not supplied. Unverified. */
@@ -33,6 +36,7 @@ async function ensureDir() {
 function rowToUser(r: any, watchlist: string[]): User {
   return {
     id: String(r.id),
+    clientCode: String(r.client_code || ""),
     username: String(r.username),
     email: String(r.email),
     phone: String(r.phone || ""),
@@ -184,19 +188,33 @@ export async function createUser(
     return { error: "exists", field: "phone" };
 
   const salt = randomBytes(16).toString("hex");
+  const createdAt = Date.now();
   const user: User = {
     id: randomBytes(8).toString("hex"),
+    // Allocated here, not derived — `id` stays the opaque primary key. The
+    // year comes from the signup date so the code reads as a real account
+    // opening rather than the day the row happened to be written.
+    clientCode: generateClientCode(
+      new Date(createdAt).getUTCFullYear(),
+      codesInUse(
+        db
+          .prepare(
+            "SELECT client_code FROM users WHERE client_code IS NOT NULL AND client_code <> ''",
+          )
+          .all() as { client_code: string }[],
+      ),
+    ),
     username,
     email,
     phone: ph,
     salt,
     passHash: hashPassword(clientHash, salt),
-    createdAt: Date.now(),
+    createdAt,
     watchlist: [],
   };
   try {
     db.prepare(
-      "INSERT INTO users (id, username, email, phone, pass_hash, salt, created_at) VALUES (?,?,?,?,?,?,?)",
+      "INSERT INTO users (id, username, email, phone, pass_hash, salt, created_at, client_code) VALUES (?,?,?,?,?,?,?,?)",
     ).run(
       user.id,
       user.username,
@@ -205,6 +223,7 @@ export async function createUser(
       user.passHash,
       user.salt,
       user.createdAt,
+      user.clientCode,
     );
   } catch {
     // Unique index raced us — treat as exists.

@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     username: user.username,
     email: user.email,
     clientID: user.id,
+    clientCode: user.clientCode,
   });
   const week = 7 * 86400;
   // "Remember me" only controls whether the cookie survives a browser restart —
@@ -61,5 +62,6 @@ export async function POST(req: NextRequest) {
   res.cookies.set("username", user.username, base);
   res.cookies.set("email", user.email, base);
   res.cookies.set("clientID", user.id, base);
+  res.cookies.set("clientCode", user.clientCode, base);
   return res;
 }

@@ -17,7 +17,9 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({
     username: user.username,
     email: user.email,
+    // `id` stays the internal key; `clientCode` is the one we show a customer.
     clientID: user.id,
+    clientCode: user.clientCode,
     createdAt: user.createdAt,
     pan: "",
     // Was hardcoded "PENDING", which made the profile badge disagree with the

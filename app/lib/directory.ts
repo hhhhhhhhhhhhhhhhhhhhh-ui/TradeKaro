@@ -19,6 +19,8 @@ export type DirectoryUser = {
   /** Bare 10-digit number, or "" — collected at signup, not yet verified. */
   phone: string;
   clientID: string;
+  /** Broker-style display ID (TK267X9Q4). Empty for heartbeat-only rows. */
+  clientCode: string;
   panLast4: string;
   kyc: string;
   status: "ACTIVE" | "FROZEN";
@@ -57,6 +59,7 @@ type UserRow = {
   email: string;
   phone: string | null;
   created_at: number;
+  client_code: string | null;
 };
 
 function emptyFromUser(u: UserRow): DirectoryUser {
@@ -66,6 +69,8 @@ function emptyFromUser(u: UserRow): DirectoryUser {
     email: String(u.email || ""),
     phone: String(u.phone || ""),
     clientID: String(u.id),
+    // What a customer actually recognises. `clientID` stays for lookups.
+    clientCode: String(u.client_code || ""),
     panLast4: "",
     kyc: "UNKNOWN",
     status: "ACTIVE",
@@ -88,6 +93,9 @@ function fromHeartbeat(r: ClientRecord): DirectoryUser {
     email: String(r.email || ""),
     phone: "",
     clientID: String(r.clientID || ""),
+    // A heartbeat carries no client code: these rows are registry-only, so
+    // there is no `users` record to read one from.
+    clientCode: "",
     panLast4: String(r.panLast4 || ""),
     kyc: String(r.kyc || "UNKNOWN"),
     status: r.status === "FROZEN" ? "FROZEN" : "ACTIVE",
@@ -112,7 +120,9 @@ function activityAt(u: DirectoryUser): number {
 
 export async function getDirectory(): Promise<DirectoryUser[]> {
   const users = db
-    .prepare("SELECT id, username, email, phone, created_at FROM users")
+    .prepare(
+      "SELECT id, username, email, phone, created_at, client_code FROM users",
+    )
     .all() as UserRow[];
   const clients = await getClients();
 
@@ -148,6 +158,7 @@ export async function getDirectory(): Promise<DirectoryUser[]> {
       email: String(u.email || match.email || ""),
       phone: String(u.phone || ""),
       clientID: String(u.id),
+      clientCode: String(u.client_code || ""),
       registered: true,
       neverLoggedIn: false,
       createdAt: Number(u.created_at) || 0,

@@ -48,7 +48,12 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
   const [pendingCount, setPendingCount] = useState(0);
-  const [meta, setMeta] = useState({ username: "", email: "", clientID: "" });
+  const [meta, setMeta] = useState({
+    username: "",
+    email: "",
+    clientID: "",
+    clientCode: "",
+  });
   const [walletNow, setWalletNow] = useState(0);
   const [positionsCount, setPositionsCount] = useState(0);
   const [signedInAt, setSignedInAt] = useState("");
@@ -59,6 +64,7 @@ export default function ProfilePage() {
     const username = (getCookie("username") as string | undefined) || "";
     const email = (getCookie("email") as string | undefined) || "";
     const clientID = (getCookie("clientID") as string | undefined) || "";
+    const clientCode = (getCookie("clientCode") as string | undefined) || "";
     let jwtName = "";
     if (token) {
       try {
@@ -67,7 +73,7 @@ export default function ProfilePage() {
         /* ignore */
       }
     }
-    setMeta({ username: username || jwtName, email, clientID });
+    setMeta({ username: username || jwtName, email, clientID, clientCode });
     try {
       const saved = localStorage.getItem(DISPLAY_KEY) || "";
       setDisplayName(saved || username || jwtName);
@@ -152,7 +158,9 @@ export default function ProfilePage() {
 
   async function copyClientId() {
     try {
-      await navigator.clipboard.writeText(meta.clientID);
+      await navigator.clipboard.writeText(
+        details.clientCode || meta.clientCode || meta.clientID,
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -350,7 +358,11 @@ export default function ProfilePage() {
                         Client ID
                       </div>
                       <div className="truncate font-mono text-[13px] tabular-nums">
-                        {meta.clientID}
+                        {/* The account API is authoritative and also covers
+                            sessions opened before client codes existed; the
+                            cookie is only there so the first paint is not
+                            blank. Last resort is the raw id. */}
+                        {details.clientCode || meta.clientCode || meta.clientID}
                       </div>
                     </div>
                     <button

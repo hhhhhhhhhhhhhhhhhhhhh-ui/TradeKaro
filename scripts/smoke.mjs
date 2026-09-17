@@ -905,6 +905,66 @@ await check("adminpw: rotate own console password", async () => {
   }
 });
 
+// ── client codes ────────────────────────────────────────────────────────────
+// The broker-style display ID a customer reads off their profile (TK267X9Q4).
+// Two things must hold: it never leaks the raw primary key, and no two accounts
+// share one — a customer quotes this to support, so an ambiguous code is a real
+// support problem rather than a cosmetic one.
+await check("account: client code is well-formed and unique", async () => {
+  const codes = [];
+  for (let i = 0; i < 3; i++) {
+    const uname = `code_${Date.now().toString(36)}_${i}`;
+    const reg = await post("/api/v1/auth/register", {
+      username: uname,
+      email: `${uname}@test.local`,
+      password: "Code@12345",
+      phone: "9" + String(Date.now() + i).slice(-9),
+    });
+    if (reg.status !== 200)
+      return {
+        ok: false,
+        info: `register=${reg.status} ${reg.json?.error || ""}`,
+      };
+    const log = await post("/api/v1/auth/login", {
+      username: uname,
+      password: "Code@12345",
+    });
+    const code = String(log.json?.clientCode || "");
+    codes.push(code);
+
+    // The profile page renders this field, not the login response, so a code
+    // that only exists on login would look like it had vanished on refresh.
+    const token = String(log.json?.token || "");
+    const acct = await post(
+      "/api/v1/auth/getAccountDetails",
+      {},
+      { Authorization: "Bearer " + token },
+    );
+    if (String(acct.json?.clientCode || "") !== code) {
+      return {
+        ok: false,
+        info: `profile API returned "${acct.json?.clientCode}" for code "${code}"`,
+      };
+    }
+  }
+
+  const WELL_FORMED = /^TK\d{2}[23456789A-HJ-NP-Z]{5}$/;
+  const shaped = codes.filter((c) => WELL_FORMED.test(c)).length;
+  const distinct = new Set(codes).size;
+  // A 16-char hex string here means the raw primary key is still being shown,
+  // which is the whole thing this replaced.
+  const leakedKey = codes.some((c) => /^[0-9a-f]{16}$/.test(c));
+
+  return {
+    ok: shaped === 3 && distinct === 3 && !leakedKey,
+    info: leakedKey
+      ? `raw key still exposed: ${codes.join(",")}`
+      : `codes=${codes.join(",")}${
+          shaped === 3 && distinct === 3 ? "" : " (shape/dup problem)"
+        }`,
+  };
+});
+
 // ── anonymous route protection ──────────────────────────────────────────────
 // A private page must bounce a visitor to /login, not render an account-shaped
 // shell full of zeros. This is also the only thing keeping the proxy's
