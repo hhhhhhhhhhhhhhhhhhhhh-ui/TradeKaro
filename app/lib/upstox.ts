@@ -172,8 +172,13 @@ export async function resolveUpstoxKey(symbol: string): Promise<string> {
     const { lookupInstrumentKey } = await import("./instruments");
     const key = await lookupInstrumentKey(sym);
     if (key) return key;
-  } catch {
-    /* master unavailable — fall through */
+  } catch (e: any) {
+    // Logged, not swallowed. This catch used to be silent, which turned a real
+    // master-loading failure into "every unmapped symbol quietly falls back to
+    // ticker form and returns no data" — indistinguishable from a bad symbol.
+    console.error(
+      `[instruments] master lookup failed for ${sym}: ${e?.message || e}`,
+    );
   }
   return `NSE_EQ|${sym}`;
 }
