@@ -149,28 +149,63 @@ export function exchangeOfSymbol(symbol: string, kind?: string): Exchange {
 }
 
 /**
- * The real segment for a symbol, resolved through the instrument master.
+ * Times the master could not answer "which exchange is this?", so a guess was
+ * used instead.
+ *
+ * Kept because the guess is the DANGEROUS direction: an unresolved GOLD becomes
+ * NSE, whose session ends at 15:30 and whose MIS cutoff is 15:15 — both wrong by
+ * eight hours. The sweep no longer acts on an unresolved leg (see
+ * `segmentOfSymbolDetailed`), and this counter is surfaced on /api/market/stats
+ * and in the admin console so an outage is visible rather than inferred.
+ */
+let segmentOutages = 0;
+let lastSegmentOutage: string | null = null;
+
+export function segmentFallbackInfo() {
+  return { outages: segmentOutages, last: lastSegmentOutage };
+}
+
+/**
+ * The real segment for a symbol, plus whether it was actually resolved.
+ *
+ * `resolved: false` means the answer is a guess from the symbol's shape, which
+ * can tell an option from a cash equity but cannot know that GOLD is an MCX
+ * contract. Callers that would ACT on the answer — closing a position, booking a
+ * fill — must check the flag; callers that merely report can use the segment.
  *
  * Async because it may have to load the master, and the key is the only
  * trustworthy source: `MCX_FO|...` and `NSE_COM` are the provider's own labels,
  * so nothing has to maintain a list of which names are commodities.
+ */
+export async function segmentOfSymbolDetailed(
+  symbol: string,
+  kind?: string,
+): Promise<{ segment: Exchange; resolved: boolean }> {
+  try {
+    const { lookupInstrumentKey } = await import("./instruments");
+    const key = await lookupInstrumentKey(symbol);
+    if (key) return { segment: exchangeOfInstrument(key), resolved: true };
+  } catch (e: any) {
+    segmentOutages += 1;
+    lastSegmentOutage = `${String(symbol || "").toUpperCase()}: ${String(
+      e?.message || e,
+    ).slice(0, 120)}`;
+  }
+  return { segment: exchangeOfSymbol(symbol, kind), resolved: false };
+}
+
+/**
+ * The segment for a symbol, falling back to the kind-based guess.
  *
- * Falls back to `exchangeOfSymbol` when the master is unavailable. That is the
- * safe direction: an outage then looks like the old behaviour rather than
- * routing a commodity order through equity lot rules.
+ * Fine for reporting and for the order gate: a wrong guess there produces a
+ * refusal (the provider has no quote under the guessed key, so `no_ref_price`
+ * follows), never a wrong fill.
  */
 export async function segmentOfSymbol(
   symbol: string,
   kind?: string,
 ): Promise<Exchange> {
-  try {
-    const { lookupInstrumentKey } = await import("./instruments");
-    const key = await lookupInstrumentKey(symbol);
-    if (key) return exchangeOfInstrument(key);
-  } catch {
-    /* master unavailable — fall through to the kind-based guess */
-  }
-  return exchangeOfSymbol(symbol, kind);
+  return (await segmentOfSymbolDetailed(symbol, kind)).segment;
 }
 
 /**

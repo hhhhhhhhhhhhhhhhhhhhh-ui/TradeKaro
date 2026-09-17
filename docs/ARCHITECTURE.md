@@ -76,8 +76,9 @@ optimistic UI mirror plus the client-side pre-checks that give instant feedback.
 Editing localStorage changes nothing that counts.
 
 - **Only writer:** `POST /api/trade/order`. Every fill is validated against a
-  real market price (3% stock / 6% option tolerance), then checked against a
-  book rebuilt from the server's own append-only log — so you cannot sell what
+  real market price — 3% for a stock, 6% for an option, **10% for a commodity**
+  (`TOLERANCE` in `tradingServer.ts`, selected by segment) — then checked against
+  a book rebuilt from the server's own append-only log, so you cannot sell what
   you never bought or spend cash you do not have. Refusals are recorded in
   `trade_rejects` with a reason code.
 - **Wallet** = seeded capital + deposits − fills − charges − margin used
@@ -142,6 +143,45 @@ own claim comes from a legacy stub that always answers `PENDING`, and letting it
 win silently reverted an operator's `VERIFIED` on the user's next page load —
 which relocked the token above.
 
+## 3c. Sessions, segments and commodities
+
+India's exchanges do not share a session, so "is the market open" is never one
+question. `app/lib/marketClock.ts` holds the single answer.
+
+| Segment | Session (IST) | MIS square-off cutoff |
+| --- | --- | --- |
+| NSE cash | 09:15–15:30 | 15:15 (admin `trading.squareOffTime`) |
+| NFO | 09:15–15:40 | 15:15 |
+| MCX / NSCOM | 09:00–23:30 | 23:25 (session end − 5 min) |
+
+- `segmentPhase()` and `orderWindow()` take a segment. **Never call them without
+  one on a path a commodity can reach** — the default is NSE, and an NSE answer
+  for gold is wrong by eight hours in both directions.
+- Sessions come from the provider's calendar (`app/lib/marketInfo.ts`), with a
+  per-segment fallback used only when it is unreachable. An unreachable provider
+  must never read as a market closure.
+- `misCutoff()` is the ONE definition of a square-off cutoff: the order gate, the
+  server sweep and the customer-facing countdown all call it. A notice promising
+  15:15 while the sweep closes at 23:25 is worse than no notice.
+- `broadMarketStatus()` backs the navbar/footer status pill, naming whichever
+  market is actually open rather than reporting NSE alone.
+
+**Commodities** resolve through the instrument master (`app/lib/instruments.ts`):
+
+- The root comes from the **trading symbol** (`GOLD27FEBFUT` → `GOLD`), never the
+  master's `name` column — `name` groups variants, labelling GOLD, GOLDM and
+  GOLDPETAL all as "GOLD".
+- `lot` means **quoted units per lot**. Quantity is in units end to end; only the
+  ticket thinks in lots and multiplies before it posts.
+- The order gate's atom is the **unit**, not the lot. Fractional lots are allowed
+  down to one unit (`trading.fractionalLots`, on by default) because a whole MCX
+  gold lot needs roughly ₹7.65 lakh of margin. A fraction of a unit is refused.
+- `MASTER_VERSION` gates the disk cache, which is trusted for a week. Bump it on
+  any change to how the master is derived, or a deployed fix sits unused behind
+  the old cache.
+- ⚠️ `POST /api/market/quote` accepts **at most 10 symbols** and drops the rest
+  SILENTLY. Chunk larger sets; `useLiveTicks` and `app/lib/movers.ts` already do.
+
 ## 4. Backend on workers.dev (non-Upstox data)
 
 Base `app/components/apiURL.tsx`. Auth cookie `token` via `cookies-next`.
@@ -152,7 +192,7 @@ Base `app/components/apiURL.tsx`. Auth cookie `token` via `cookies-next`.
 | Trade mirror   | `POST /transaction/buyScrip`, `POST /transaction/sellScrip` | OrderTicket, popups, basket, TradeEngine, PositionsPanel |
 | Movers         | `POST /getTopMovers`, `POST /topmovers`                     | dashboard, /topmovers, landing LiveMovers                |
 | Indices/market | `POST /getIndices`, `POST /getMarketCap`                    | dashboard IndicesSection, MarketStatusRow                |
-| News           | `POST /announcements` → `{articles}`                        | NewsFeed, StockNews                                      |
+| News           | `POST /announcements` → `{articles}` (provider instrument news, per-symbol) | NewsFeed, StockNews, /news |
 | Quote/depth    | `POST /getStockQuote`, `POST /getOrderBook`                 | stock page header, `useOrderBook` DepthPanel/Orderbook   |
 
 ## 5. Pages and what each fetches

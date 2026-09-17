@@ -18,7 +18,11 @@ import {
   type ExchangeCode,
 } from "./marketClock";
 import { legKey, normalizeProduct } from "./positionKeys";
-import { segmentOfSymbol, todaySessions } from "./marketInfo";
+import {
+  segmentOfSymbol,
+  segmentOfSymbolDetailed,
+  todaySessions,
+} from "./marketInfo";
 import type { AdminSettings } from "./adminStore";
 import {
   hasUpstox,
@@ -987,7 +991,7 @@ const SWEEP_SEGMENTS: ExchangeCode[] = [EQUITY_EXCHANGE, "MCX", "NSCOM"];
  */
 export async function sweepMisSquareOff(
   now = new Date(),
-): Promise<{ swept: number; unpriced: number; why: string }> {
+): Promise<{ swept: number; unpriced: number; unclassified: number; why: string }> {
   const rs = await runtimeSettings();
   const cal = await todaySessions().catch(() => null);
   const plans = new Map<
@@ -1006,10 +1010,21 @@ export async function sweepMisSquareOff(
   // Cheap union first: if no segment has reached its cutoff, return before
   // touching a single price.
   if (!SWEEP_SEGMENTS.some((s) => planFor(s).due))
-    return { swept: 0, unpriced: 0, why: planFor(EQUITY_EXCHANGE).why };
+    return {
+      swept: 0,
+      unpriced: 0,
+      unclassified: 0,
+      why: planFor(EQUITY_EXCHANGE).why,
+    };
   // A maintenance freeze stops user trading; the sweep waits with it rather than
   // reaching for prices while the operator has the system held.
-  if (rs.maintenance) return { swept: 0, unpriced: 0, why: "maintenance mode" };
+  if (rs.maintenance)
+    return {
+      swept: 0,
+      unpriced: 0,
+      unclassified: 0,
+      why: "maintenance mode",
+    };
 
   const users = db
     .prepare("SELECT DISTINCT user_id FROM trade_fills")
@@ -1017,6 +1032,8 @@ export async function sweepMisSquareOff(
 
   let swept = 0;
   let unpriced = 0;
+  /** Legs whose exchange could not be resolved, so they were left open. */
+  let unclassified = 0;
   const whys: string[] = [];
 
   for (const u of users) {
@@ -1025,8 +1042,18 @@ export async function sweepMisSquareOff(
     for (const symbol of misLegs(u.user_id).map((l) => l.symbol)) {
       // Which exchange this leg belongs to decides whether it is due at all, so
       // resolve it before spending a price lookup on a leg that must stay open.
-      // Cached per user+symbol inside the loop by the plan map above.
-      const seg = await segmentOfSymbol(symbol);
+      //
+      // A leg whose exchange could NOT be resolved is skipped, not closed. The
+      // fallback guesses NSE, whose cutoff is 15:15 — so a master outage during
+      // the evening would square off every commodity leg eight hours early. The
+      // price lookup would usually fail first and save us, but relying on a
+      // downstream failure to prevent a wrong close is not a control, it is luck.
+      // Skipping is always the safe direction: the next pass can still decide.
+      const { segment: seg, resolved } = await segmentOfSymbolDetailed(symbol);
+      if (!resolved) {
+        unclassified += 1;
+        continue;
+      }
       const plan = planFor(seg);
       if (!plan.due) continue;
       if (!whys.includes(plan.why)) whys.push(plan.why);
@@ -1077,13 +1104,16 @@ export async function sweepMisSquareOff(
   }
 
   const why = whys.length ? whys.join("; ") : "nothing due";
-  if (swept || unpriced)
+  if (swept || unpriced || unclassified)
     console.log(
       `[mis] auto square-off: ${swept} leg(s) closed` +
         (unpriced ? `, ${unpriced} could not be priced` : "") +
+        (unclassified
+          ? `, ${unclassified} left open (exchange unresolved)`
+          : "") +
         ` — ${why}`,
     );
-  return { swept, unpriced, why };
+  return { swept, unpriced, unclassified, why };
 }
 
 /** How many fills exist for one user+symbol — used to key the sweep's idempotency. */

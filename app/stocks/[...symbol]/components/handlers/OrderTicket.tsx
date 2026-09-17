@@ -29,11 +29,11 @@ export default function OrderTicket(props: {
   const token = getCookie("token") as string | undefined;
   const { orderDefaults, trading: tradingRules } = usePublicConfig();
   // What this symbol actually is. The ticket cannot infer any of this from the
-  // name: GOLD is an MCX contract trading in 1-unit lots to 23:30, SILVER is the
-  // same venue in 100-unit lots. Until the answer arrives the ticket behaves as
-  // an equity, which is the safe direction — it never offers a lot count it
-  // cannot back up with a real lot size, and the server gate enforces the true
-  // lot regardless.
+  // name: GOLD is an MCX contract quoted in 100-unit lots and trading to 23:30,
+  // SILVER is the same venue in 30-unit lots. Until the answer arrives the ticket
+  // behaves as an equity, which is the safe direction — it never offers a lot
+  // count it cannot back up with a real lot size, and the server gate enforces
+  // the true lot regardless.
   const { meta } = useInstrument(props.symbol);
   const lot = lotOf(meta);
   const isCommodity = Boolean(meta?.isCommodity);

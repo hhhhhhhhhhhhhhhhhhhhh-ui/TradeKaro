@@ -124,6 +124,15 @@ export function segmentFallbackHours(
 }
 
 /**
+ * How long before the open the market counts as PRE-OPEN rather than closed.
+ *
+ * Without a bound, every hour between midnight and the opening bell reported
+ * PRE-OPEN — including 01:00, which is closer to the previous close than to the
+ * next open.
+ */
+export const PRE_OPEN_WINDOW_MINS = 90;
+
+/**
  * Does this segment trade the late commodities session?
  *
  * MCX and NSE's commodity segment share hours far outside the cash market, so
@@ -194,7 +203,13 @@ export function segmentPhase(
   // is the one thing a fallback must never do.
   const mins = ist.getHours() * 60 + ist.getMinutes();
   const hours = segmentFallbackHours(cfg, segment);
-  if (mins < toMins(hours.open, 555)) return "PRE";
+  const openMins = toMins(hours.open, 555);
+  // PRE only within the run-up to the open. Before that the market is not
+  // waiting to start — it is SHUT, and it shut yesterday. A bare `mins < open`
+  // reported PRE-OPEN at 01:00 IST, telling a customer the session was about to
+  // begin when it was eight hours away.
+  if (mins < openMins)
+    return openMins - mins <= PRE_OPEN_WINDOW_MINS ? "PRE" : "POST";
   if (mins <= toMins(hours.close, 930)) return "LIVE";
   return "POST";
 }
@@ -407,8 +422,14 @@ function closedReason(
       return `${name} is closed for a trading holiday today.`;
     case "PRE":
       return `${name} has not opened yet — today's session starts at ${open} IST.`;
-    default:
-      return `${name} is closed — today's session ended at ${close} IST.`;
+    default: {
+      // POST covers two different situations: the evening after a close, and the
+      // small hours before the next open. Naming the wrong one is how the status
+      // bar ended up saying "ended at 15:30" at one in the morning.
+      return istMinutes(now) < toMins(open, 555)
+        ? `${name} is closed — today's session opens at ${open} IST.`
+        : `${name} is closed — today's session ended at ${close} IST.`;
+    }
   }
 }
 

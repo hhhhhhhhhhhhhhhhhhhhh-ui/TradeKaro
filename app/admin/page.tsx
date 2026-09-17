@@ -3890,13 +3890,17 @@ function InstrumentMaster() {
     loading?: boolean;
     error?: string | null;
   } | null>(null);
+  const [outages, setOutages] = useState<{ outages: number; last: string | null } | null>(null);
   const [err, setErr] = useState("");
 
   function load() {
     setErr("");
     fetch("/api/market/stats", { cache: "no-store" })
       .then((r) => r.json())
-      .then((j) => setSt(j?.instruments ?? null))
+      .then((j) => {
+        setSt(j?.instruments ?? null);
+        setOutages(j?.segmentFallbacks ?? null);
+      })
       .catch((e) => setErr(String(e?.message || e)));
   }
   useEffect(load, []);
@@ -3967,6 +3971,17 @@ function InstrumentMaster() {
                 {st.error}
               </pre>
             </div>
+          ) : null}
+          {outages && outages.outages > 0 ? (
+            <Callout tone="warn">
+              {outages.outages} symbol{outages.outages === 1 ? "" : "s"} could
+              not be resolved to an exchange and fell back to NSE — which is
+              wrong for any commodity, whose session and square-off cutoff are
+              eight hours later. Orders still refuse safely (the guessed key
+              returns no price), and the MIS sweep now SKIPS an unresolved leg
+              rather than closing it on a guess. Last: {" "}
+              <code>{outages.last}</code>
+            </Callout>
           ) : null}
         </>
       )}

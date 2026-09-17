@@ -2,9 +2,16 @@ import { promises as fs } from "fs";
 import path from "path";
 import { gunzipSync } from "zlib";
 
-// Upstox instrument master. Quotes reject ticker-form keys (NSE_EQ|RELIANCE) —
-// equities need ISIN form, so resolve symbols against the official master once
-// and cache the result on disk.
+// Upstox instrument master. Symbols are resolved against the official master and
+// cached on disk, so a quote always asks for the provider's own key rather than
+// something assembled from the ticker.
+//
+// ⚠️ The bare-ticker fallback in `resolveUpstoxKey` DOES work for plain NSE cash
+// symbols — `NSE_EQ|LODHA` returns a real quote. (An earlier version of this
+// comment claimed quotes reject ticker-form keys. They do not, and believing it
+// cost a long hunt: an unmapped symbol does not fail loudly, it quietly returns
+// a different instrument or nothing at all. `instrumentMasterInfo()` is surfaced
+// in the admin console for exactly that reason.)
 //
 // Reads `complete.csv.gz` rather than `NSE.csv.gz`: it carries every exchange in
 // one file, which is what makes MCX commodities and the full index list
@@ -310,20 +317,13 @@ export async function lookupInstrumentKey(
 }
 
 /**
- * Is this a commodity root (GOLD, SILVER, CRUDEOIL…)?
+ * Lot size for a commodity root, or null when it is not one.
  *
- * Async because it may have to load the master first. The order gate needs a
- * trustworthy answer: guessing "not a commodity" would route a commodity order
- * through the equity session and lot rules.
+ * (An `isCommoditySymbol()` companion used to sit here — exported, and never
+ * called from anywhere. The question the app actually asks is never "is this a
+ * commodity" but "what lot, and which exchange", which this and
+ * `segmentOfSymbol` answer between them.)
  */
-export async function isCommoditySymbol(symbol: string): Promise<boolean> {
-  const sym = String(symbol || "").toUpperCase();
-  if (!sym) return false;
-  const m = await instrumentMaster();
-  return Boolean(m.com[sym]);
-}
-
-/** Lot size for a commodity root, or null when it is not one. */
 export async function commodityContract(
   symbol: string,
 ): Promise<CommodityContract | null> {
