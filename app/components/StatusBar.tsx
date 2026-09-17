@@ -7,7 +7,7 @@ import { marketStatusLabel, isMarketLive } from "@/app/lib/marketClock";
 // Bottom broker status bar: clock, market state, data source.
 export default function StatusBar() {
   const [now, setNow] = useState<Date | null>(null);
-  const { marketHours } = usePublicConfig();
+  const { marketHours, calendar } = usePublicConfig();
   const { live } = useLiveTicks(["NIFTY"], 8000);
   useEffect(() => {
     setNow(new Date());
@@ -17,8 +17,8 @@ export default function StatusBar() {
   // One shared session clock (app/lib/marketClock.ts) — the same one the order
   // gate uses, so this bar can never claim the market is open while orders are
   // being refused.
-  const st = now ? marketStatusLabel(marketHours, now) : "…";
-  const isLive = now ? isMarketLive(marketHours, now) : false;
+  const st = now ? marketStatusLabel(marketHours, now, "NSE", calendar) : "…";
+  const isLive = now ? isMarketLive(marketHours, now, "NSE", calendar) : false;
   return (
     <div
       className="hidden md:block fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur"

@@ -12,6 +12,7 @@ import {
   orderWindow,
 } from "./marketClock";
 import { legKey, normalizeProduct } from "./positionKeys";
+import { exchangeOfSymbol, todaySessions } from "./marketInfo";
 import type { AdminSettings } from "./adminStore";
 import {
   hasUpstox,
@@ -539,11 +540,27 @@ export async function validateFill(
     };
 
   // The session gate. Placed before every other check because it does not depend
-  // on the order at all: outside NSE hours nothing may enter the ledger, however
-  // well-formed the request is. Without this, an after-hours order was accepted
-  // and marked against the last traded price, booking P&L on a market that was
-  // not even open.
-  const window = orderWindow(rs.marketHours, rules.allowAfterHours === true);
+  // on the order at all: outside the session nothing may enter the ledger,
+  // however well-formed the request is. Without this, an after-hours order was
+  // accepted and marked against the last traded price, booking P&L on a market
+  // that was not even open.
+  //
+  // Segment-aware, because the exchanges do not share a session: measured live,
+  // NSE runs 09:15-15:30, NFO to 15:40 and MCX/NSCOM to 23:30. One NSE window
+  // refused the last ten minutes of every options session every day.
+  //
+  // `calendar` is null whenever the provider is unreachable, and `orderWindow`
+  // then falls back to the configured window exactly as it did before — an
+  // outage must never look like a market closure.
+  const segment = exchangeOfSymbol(input.symbol, input.kind);
+  const calendar = await todaySessions().catch(() => null);
+  const window = orderWindow(
+    rs.marketHours,
+    rules.allowAfterHours === true,
+    new Date(),
+    segment,
+    calendar,
+  );
   if (!window.allowed)
     return {
       ok: false,

@@ -151,11 +151,12 @@ export default function NavbarDesktop(props: any) {
   // Session state comes from the shared clock, which reads the admin panel's
   // window and holidays. This badge used to hardcode 09:15–15:30, so it
   // disagreed with the status bar whenever an operator changed the hours.
-  const { marketHours: navMarketHours } = usePublicConfig();
+  const { marketHours: navMarketHours, calendar: cfgCalendar } =
+    usePublicConfig();
   const st = now
     ? {
-        label: marketStatusLabel(navMarketHours, now),
-        live: isMarketLive(navMarketHours, now),
+        label: marketStatusLabel(navMarketHours, now, "NSE", cfgCalendar),
+        live: isMarketLive(navMarketHours, now, "NSE", cfgCalendar),
       }
     : { label: "…", live: false };
   const { live: feedLive } = useLiveTicks(["NIFTY"], 8000);

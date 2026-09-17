@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePublicConfig } from "./usePublicConfig";
-import { orderWindow, type MarketPhase } from "@/app/lib/marketClock";
+import { orderWindow, type ExchangeCode, type MarketPhase } from "@/app/lib/marketClock";
 
 export type OrderWindowState = {
   /**
@@ -25,17 +25,27 @@ const TICK_MS = 30_000;
  *
  * Re-evaluates on a timer, so a ticket left open across the closing bell locks
  * itself instead of failing on submit. Mirrors the server's check exactly — both
- * call `orderWindow`, so the button and the ledger can never disagree.
+ * call `orderWindow` with the same calendar, so the button and the ledger can
+ * never disagree.
+ *
+ * `segment` matters: NFO trades to 15:40 and MCX to 23:30, so a ticket that
+ * assumed NSE hours would lock itself ten minutes before the options bell (and
+ * eight hours before the commodity one).
  */
-export function useOrderWindow(): OrderWindowState {
+export function useOrderWindow(
+  segment: ExchangeCode = "NSE",
+): OrderWindowState {
   const cfg = usePublicConfig();
   const allowAfterHours = cfg.trading?.allowAfterHours === true;
+  const calendar = cfg.calendar ?? null;
   // Cheap dependency key: the config object is rebuilt on every poll, so keying
   // the effect on the object itself would restart the timer every few seconds.
   const hoursKey = [
     cfg.marketHours?.open,
     cfg.marketHours?.close,
-    (cfg.marketHours?.holidays || []).join(","),
+    calendar?.sessions?.[segment]?.start ?? "",
+    calendar?.sessions?.[segment]?.end ?? "",
+    (calendar?.closed || []).join(","),
   ].join("|");
 
   const [state, setState] = useState<OrderWindowState>({
@@ -45,14 +55,17 @@ export function useOrderWindow(): OrderWindowState {
     checked: false,
   });
 
-  const latest = useRef({ hours: cfg.marketHours, allowAfterHours });
-  latest.current = { hours: cfg.marketHours, allowAfterHours };
+  const latest = useRef({ hours: cfg.marketHours, allowAfterHours, calendar });
+  latest.current = { hours: cfg.marketHours, allowAfterHours, calendar };
 
   useEffect(() => {
     const tick = () => {
       const w = orderWindow(
         latest.current.hours,
         latest.current.allowAfterHours,
+        new Date(),
+        segment,
+        latest.current.calendar,
       );
       setState({
         allowed: w.allowed,
@@ -64,7 +77,7 @@ export function useOrderWindow(): OrderWindowState {
     tick();
     const t = setInterval(tick, TICK_MS);
     return () => clearInterval(t);
-  }, [hoursKey, allowAfterHours]);
+  }, [hoursKey, allowAfterHours, segment]);
 
   return state;
 }

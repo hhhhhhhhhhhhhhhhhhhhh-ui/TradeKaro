@@ -42,7 +42,7 @@ export default function OptionTicket({
   const [lots, setLots] = useState(1);
   const [confirmOff, setConfirmOff] = useState(false);
   const [wallet, setWallet] = useState<number | null>(null);
-  const session = useOrderWindow();
+  const session = useOrderWindow("NFO");
   const marketClosed = !session.allowed;
   const openCount = useMemo(
     () =>

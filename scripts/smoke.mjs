@@ -965,6 +965,42 @@ await check("account: client code is well-formed and unique", async () => {
   };
 });
 
+// ── exchange calendar ───────────────────────────────────────────────────────
+// The gate reads real per-exchange sessions now, so the shape of what the
+// provider returns is load-bearing. Two things must hold: every segment we
+// trade resolves to a session, and the segments genuinely differ — NFO closes
+// ten minutes after NSE cash, and MCX runs into the evening. If those ever come
+// back equal, the calendar has silently degraded to the old single window and
+// the tail of every options session is being refused again.
+const istHM = (ms) =>
+  new Date(Number(ms) + 5.5 * 3600_000).toISOString().slice(11, 16);
+
+await check("market: calendar serves per-segment sessions", async () => {
+  const r = await get("/api/admin/public");
+  const cal = r.json?.calendar;
+  // A null calendar is legal (provider unreachable) — the gate then falls back
+  // to the admin window. It is only a failure if the provider is up and we are
+  // still not getting sessions.
+  if (!cal) return { ok: false, info: "no calendar in the public config" };
+
+  const s = cal.sessions || {};
+  const missing = ["NSE", "NFO", "MCX"].filter((e) => !s[e]);
+  if (missing.length)
+    return { ok: false, info: `no session for ${missing.join(", ")}` };
+
+  const nfoLater = Number(s.NFO.end) > Number(s.NSE.end);
+  const mcxLater = Number(s.MCX.end) > Number(s.NSE.end);
+  const holidays = (r.json?.holidays || []).length;
+
+  return {
+    ok: nfoLater && mcxLater && !cal.closed.includes("NSE"),
+    info:
+      `NSE ${istHM(s.NSE.end)} · NFO ${istHM(s.NFO.end)} · ` +
+      `MCX ${istHM(s.MCX.end)} · ${holidays} holidays · ` +
+      `closed today=[${(cal.closed || []).join(",")}]`,
+  };
+});
+
 // ── anonymous route protection ──────────────────────────────────────────────
 // A private page must bounce a visitor to /login, not render an account-shaped
 // shell full of zeros. This is also the only thing keeping the proxy's

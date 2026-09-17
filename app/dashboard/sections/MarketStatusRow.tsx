@@ -7,7 +7,7 @@ import { isMarketLive, marketStatusLabel } from "@/app/lib/marketClock";
 // Market status row: LIVE pill + NIFTY/SENSEX/BANKNIFTY live ticks + IST clock.
 export default function MarketStatusRow() {
   const [now, setNow] = useState<Date | null>(null);
-  const { marketHours } = usePublicConfig();
+  const { marketHours, calendar } = usePublicConfig();
   const { ticks, live } = useLiveTicks(["NIFTY", "SENSEX", "BANKNIFTY"], 8000);
 
   useEffect(() => {
@@ -18,8 +18,8 @@ export default function MarketStatusRow() {
 
   const st = now
     ? {
-        label: marketStatusLabel(marketHours, now),
-        live: isMarketLive(marketHours, now),
+        label: marketStatusLabel(marketHours, now, "NSE", calendar),
+        live: isMarketLive(marketHours, now, "NSE", calendar),
       }
     : { label: "…", live: false };
   const clock = now

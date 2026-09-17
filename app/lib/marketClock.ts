@@ -4,10 +4,69 @@
 export type MarketHours = {
   open: string;
   close: string;
+  /**
+   * @deprecated No longer read. Trading holidays come from the exchange
+   * calendar (see `marketInfo.ts`), because a single hand-kept list cannot
+   * express that MCX stays open on days NSE is shut. Kept so settings written
+   * by older builds still parse.
+   */
   holidays?: string[];
 };
 
 export type MarketPhase = "WEEKEND" | "HOLIDAY" | "PRE" | "LIVE" | "POST";
+
+/**
+ * Exchange codes exactly as the provider returns them.
+ *
+ * Verified live against `/market/timings`. They are not guessable from the
+ * instrument-key prefixes: there is no `NSE_FO` code (`NFO` instead), and NSE's
+ * commodity segment is `NSCOM`, not `NSE_COM`.
+ *
+ * Declared here rather than in `marketInfo.ts` on purpose — this module is
+ * imported by client components, and `marketInfo` pulls in `node:fs`.
+ */
+export type ExchangeCode =
+  | "NSE"
+  | "NFO"
+  | "NSCOM"
+  | "BSE"
+  | "BFO"
+  | "MCX"
+  | "CDS"
+  | "BCD";
+
+/** Cash equities are the default segment everywhere. */
+export const EQUITY_EXCHANGE: ExchangeCode = "NSE";
+
+export type SessionWindow = { start: number; end: number };
+
+/**
+ * Today's exchange calendar, fetched server-side and handed to both the client
+ * and the order gate so they cannot disagree.
+ *
+ * `null`/absent means "unknown" — provider unreachable, or no data yet — and
+ * every reader falls back to the admin window. It must never be read as
+ * "closed": treating an outage as a market closure would silently stop every
+ * order on the platform.
+ */
+export type DayCalendar = {
+  /** Exchanges shut for the whole day. */
+  closed: ExchangeCode[];
+  /** Per-exchange sessions in epoch ms, for exchanges that are open. */
+  sessions: Partial<Record<ExchangeCode, SessionWindow>>;
+};
+
+/** Friendly names for operator- and customer-facing copy. */
+export const EXCHANGE_LABEL: Record<ExchangeCode, string> = {
+  NSE: "NSE",
+  NFO: "NSE F&O",
+  NSCOM: "NSE Commodities",
+  BSE: "BSE",
+  BFO: "BSE F&O",
+  MCX: "MCX",
+  CDS: "Currency",
+  BCD: "Currency",
+};
 
 function toMins(hhmm: string, fb: number) {
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(hhmm || "");
@@ -24,14 +83,47 @@ export function marketPhase(
   cfg: MarketHours | undefined,
   now = new Date(),
 ): MarketPhase {
-  // NSE cash hours follow the admin panel (default 09:15–15:30 IST Mon–Fri).
+  return segmentPhase(cfg, now, EQUITY_EXCHANGE, null);
+}
+
+/**
+ * Session state for ONE exchange.
+ *
+ * The provider calendar wins when we have it. Without one we fall back to the
+ * admin-configured window and a weekday check — deliberately NOT to a holiday
+ * list, because a manual list is exactly the thing this replaced: it can only be
+ * wrong in the quiet direction, letting orders through on a day the exchange is
+ * shut.
+ *
+ * Segments differ more than people expect. Measured live:
+ *   NSE 09:15-15:30 · NFO 09:15-15:40 · NSCOM and MCX 09:00-23:30
+ * so a single window is wrong for options by 10 minutes and for commodities by
+ * eight hours.
+ */
+export function segmentPhase(
+  cfg: MarketHours | undefined,
+  now: Date,
+  segment: ExchangeCode,
+  cal?: DayCalendar | null,
+): MarketPhase {
   const ist = new Date(
     now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
   );
   const day = ist.getDay();
-  const mins = ist.getHours() * 60 + ist.getMinutes();
   if (day === 0 || day === 6) return "WEEKEND";
-  if (cfg?.holidays?.includes(istYmd(ist))) return "HOLIDAY";
+
+  if (cal) {
+    if (cal.closed.includes(segment)) return "HOLIDAY";
+    const s = cal.sessions[segment];
+    if (s) {
+      const t = now.getTime();
+      if (t < s.start) return "PRE";
+      if (t <= s.end) return "LIVE";
+      return "POST";
+    }
+  }
+
+  const mins = ist.getHours() * 60 + ist.getMinutes();
   if (mins < toMins(cfg?.open || "09:15", 555)) return "PRE";
   if (mins <= toMins(cfg?.close || "15:30", 930)) return "LIVE";
   return "POST";
@@ -71,45 +163,54 @@ export function istMinutes(now = new Date()): number {
 export function isMarketLive(
   cfg: MarketHours | undefined,
   now = new Date(),
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
 ): boolean {
-  return marketPhase(cfg, now) === "LIVE";
+  return segmentPhase(cfg, now, segment, cal) === "LIVE";
 }
 
 export function marketStatusLabel(
   cfg: MarketHours | undefined,
   now = new Date(),
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
 ): string {
-  switch (marketPhase(cfg, now)) {
+  switch (segmentPhase(cfg, now, segment, cal)) {
     case "WEEKEND":
       return "CLOSED · WEEKEND";
     case "HOLIDAY":
-      return "CLOSED · HOLIDAY";
+      return `CLOSED · ${EXCHANGE_LABEL[segment]} HOLIDAY`;
     case "PRE":
       return "PRE-OPEN";
     case "LIVE":
-      return "LIVE · NSE OPEN";
+      return `LIVE · ${EXCHANGE_LABEL[segment]} OPEN`;
     default:
       return "CLOSED · POST-MARKET";
   }
 }
 
-function closedReason(cfg: MarketHours | undefined, phase: MarketPhase) {
+function closedReason(
+  cfg: MarketHours | undefined,
+  phase: MarketPhase,
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+) {
   const open = cfg?.open || "09:15";
   const close = cfg?.close || "15:30";
+  const name = EXCHANGE_LABEL[segment];
   switch (phase) {
     case "WEEKEND":
-      return `Market closed for the weekend — NSE trades Mon–Fri, ${open}–${close} IST.`;
+      return `Market closed for the weekend — ${name} trades Mon–Fri, ${open}–${close} IST.`;
     case "HOLIDAY":
-      return `Market closed for a trading holiday — NSE trades Mon–Fri, ${open}–${close} IST.`;
+      return `${name} is closed for a trading holiday today.`;
     case "PRE":
-      return `Market has not opened yet — today's session starts at ${open} IST.`;
+      return `${name} has not opened yet — today's session starts at ${open} IST.`;
     default:
-      return `Market closed — today's session ended at ${close} IST.`;
+      return `${name} is closed — today's session ended at ${close} IST.`;
   }
 }
 
 /**
- * Whether an order may be placed right now.
+ * Whether an order may be placed right now, for one exchange segment.
  *
  * This is the single guard behind both the order-button state and the
  * authoritative server check, so the browser and the ledger can never disagree
@@ -123,9 +224,11 @@ export function orderWindow(
   cfg: MarketHours | undefined,
   allowAfterHours = false,
   now = new Date(),
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
 ): { allowed: boolean; phase: MarketPhase; reason: string } {
-  const phase = marketPhase(cfg, now);
+  const phase = segmentPhase(cfg, now, segment, cal);
   if (phase === "LIVE" || allowAfterHours)
     return { allowed: true, phase, reason: "" };
-  return { allowed: false, phase, reason: closedReason(cfg, phase) };
+  return { allowed: false, phase, reason: closedReason(cfg, phase, segment) };
 }

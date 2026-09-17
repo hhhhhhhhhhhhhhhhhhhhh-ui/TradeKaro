@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import type { DayCalendar } from "@/app/lib/marketClock";
 
 export type PublicConfig = {
   clientPollMs: number;
@@ -17,6 +18,14 @@ export type PublicConfig = {
     compare: boolean;
   };
   marketHours: { open: string; close: string; holidays: string[] };
+  /**
+   * Today's per-exchange sessions and closures, straight from the provider.
+   * `null` means the provider was unreachable — readers must then trust
+   * `marketHours` instead, never read it as "market closed".
+   */
+  calendar?: (DayCalendar & { date: string }) | null;
+  /** Every closure this year, per exchange. */
+  holidays?: { date: string; closed: string[]; description?: string }[];
   banner: string;
   maintenance: boolean;
   providerOff: boolean;
@@ -76,6 +85,10 @@ const FALLBACK: PublicConfig = {
     compare: false,
   },
   marketHours: { open: "09:15", close: "15:30", holidays: [] },
+  // Null until the first poll lands. The order window then falls back to
+  // marketHours above, which is the behaviour every build before this one had.
+  calendar: null,
+  holidays: [],
   banner: "",
   maintenance: false,
   providerOff: false,

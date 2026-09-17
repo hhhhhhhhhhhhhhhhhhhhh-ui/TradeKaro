@@ -178,6 +178,17 @@ export async function resolveUpstoxKey(symbol: string): Promise<string> {
   return `NSE_EQ|${sym}`;
 }
 
+/**
+ * The same call path as the internal helper, exported so sibling modules
+ * (market info, news) share this token bucket and circuit breaker.
+ *
+ * They must. Every caller that opens its own budget instead works against a
+ * provider that already answers 429 when pushed, and the breaker is per-process
+ * — a second copy would happily hammer a failing endpoint the first copy has
+ * already given up on.
+ */
+export const upstoxGet = (path: string) => get(path);
+
 export async function upstoxLtp(keys: string[]) {
   const q = keys.map((k) => encodeURIComponent(k)).join(",");
   const j: any = await get(`/market-quote/ltp?instrument_key=${q}`);
