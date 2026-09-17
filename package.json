@@ -1,0 +1,43 @@
+{
+  "name": "tradekaro",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@vercel/analytics": "^2.0.1",
+    "autoprefixer": "^10.5.0",
+    "axios": "^1.16.1",
+    "cookies-next": "^6.1.1",
+    "lightweight-charts": "^5.2.1",
+    "lucide-react": "^1.16.0",
+    "next": "^16.2.6",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-icons": "^5.6.0",
+    "reactjs-popup": "^2.0.6",
+    "sileo": "^0.1.5",
+    "tailwindcss-animate": "^1.0.7",
+    "upstox-js-sdk": "^2.31.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^10",
+    "eslint-config-next": "16.2.6",
+    "postcss": "^8",
+    "tailwindcss": "^3",
+    "typescript": "^6"
+  },
+  "overrides": {
+    "tar": "^7.5.7"
+  }
+}

@@ -1,0 +1,75 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# local env files
+.env*.local
+
+# admin runtime data (users, sessions, audit, settings)
+data/admin/
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# instrument master cache (regenerates on demand)
+data/cache/
+data/paper/
+
+# sqlite database + legacy json backup
+data/auth/
+data/trade.db*
+data/_legacy_json_backup/
+data/backup-manifest.json
+
+# nightly backups + build/typecheck logs
+/backups/
+*.log
+
+# ---------------------------------------------------------------------------
+# Safety net: never commit data or credentials.
+#
+# `data/backups/` held full SQLite dumps (users, admin password hashes,
+# deposits, audit trail) and was NOT covered by the root-anchored `/backups/`
+# above — `git add` picked up 4.4 MB of them. These globs cover every variant so
+# a future backup path cannot leak either.
+# ---------------------------------------------------------------------------
+data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+/backups/
+backup-manifest.json
+
+# env: keep .env.example (documented, no values), ignore everything else
+.env
+.env.*
+!.env.example

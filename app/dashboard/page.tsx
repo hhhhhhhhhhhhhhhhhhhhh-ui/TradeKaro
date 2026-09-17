@@ -1,0 +1,199 @@
+"use client";
+import { useEffect, useState } from "react";
+import parseJwt from "../components/navbar/utils/parseJwt";
+import { getCookie } from "cookies-next";
+import marketCap from "./handlers/marketCap";
+import getIndices from "./handlers/indices";
+import IndicesSection from "./sections/IndicesSection";
+import TopMoversSection from "./sections/TopMoversSection";
+import getTopMovers from "./handlers/topMovers";
+import TopMarketCap from "./components/TopMarketCap";
+import MarqueeTicker from "../components/landing/MarqueeTicker";
+import { DotmSquare6 } from "../components/ui/dotm-square-6";
+import PortfolioStrip from "./sections/PortfolioStrip";
+import MarketStatusRow from "./sections/MarketStatusRow";
+import WatchlistPositionsPreview from "./sections/WatchlistPositionsPreview";
+import BreadthHeroChart from "./sections/BreadthHeroChart";
+import NewsFeed from "./sections/NewsFeed";
+import ShortcutsGrid from "./sections/ShortcutsGrid";
+
+export default function DashboardPage() {
+  const [username, setUsername] = useState("");
+  const [dateLabel, setDateLabel] = useState("");
+  const [marketCapData, setMarketCapData] = useState<any>([]);
+  const [indicesData, setIndicesData] = useState<any>({});
+  const [topMovers, setTopMovers] = useState<any>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = getCookie("token") as string | undefined;
+    if (token) setUsername(parseJwt(token)?.username || "");
+
+    setDateLabel(
+      new Date().toLocaleDateString("en-IN", {
+        weekday: "long",
+        day: "numeric",
+        month: "short",
+      }),
+    );
+
+    async function loadDashboard() {
+      try {
+        const [marketCapResult, indicesResult, topMoversResult] =
+          await Promise.all([marketCap(), getIndices(), getTopMovers()]);
+        setMarketCapData(marketCapResult?.data);
+        setIndicesData(indicesResult?.data);
+        setTopMovers(topMoversResult?.data ?? {});
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadDashboard();
+  }, []);
+
+  return (
+    <>
+      <MarqueeTicker />
+
+      <div className="px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="mt-8 mb-10 flex items-start justify-between gap-4">
+            <div>
+              <span className="eyebrow">Overview</span>
+              <h1 className="text-3xl md:text-4xl font-bold tracking-tight mt-1">
+                Welcome back,{" "}
+                <span className="brand-gradient-text">{username}</span>
+              </h1>
+              <p className="mt-1 text-[13px] text-muted-foreground">
+                NSE · LIVE · {dateLabel}
+              </p>
+            </div>
+            <div className="hidden md:block flex-shrink-0 mt-4">
+              <DotmSquare6
+                size={32}
+                dotSize={4}
+                speed={1.2}
+                bloom
+                color="rgb(var(--positive))"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-14 mb-16">
+            {loading ? (
+              <>
+                <div className="w-full">
+                  <div className="border-t border-dashed border-border pt-4 mb-6 flex items-baseline gap-3">
+                    <div className="h-3 w-20 bg-foreground/10"></div>
+                  </div>
+                  <div className="flex gap-3 overflow-x-auto">
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className="flex flex-col px-5 py-4 bg-card min-w-[160px] border border-border"
+                      >
+                        <div className="h-3 w-20 bg-foreground/10 mb-4 mt-1"></div>
+                        <div className="h-6 w-24 bg-foreground/10 mb-2"></div>
+                        <div className="h-3 w-16 bg-foreground/10"></div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="space-y-10">
+                    {[1, 2].map((s) => (
+                      <div key={s}>
+                        <div className="border-t border-dashed border-border pt-4 mb-6">
+                          <div className="h-3 w-24 bg-foreground/10"></div>
+                        </div>
+                        <div className="flex gap-3 overflow-x-auto">
+                          {[1, 2, 3, 4].map((i) => (
+                            <div
+                              key={i}
+                              className="flex flex-col bg-card p-5 min-w-[180px] border border-border"
+                            >
+                              <div className="h-3 w-24 bg-foreground/10 mb-3 mt-1"></div>
+                              <div className="h-4 w-16 bg-foreground/10 mb-4"></div>
+                              <div className="h-6 w-20 bg-foreground/10 mb-2"></div>
+                              <div className="h-3 w-14 bg-foreground/10"></div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="border-t border-dashed border-border pt-4 mb-6">
+                    <div className="h-3 w-28 bg-foreground/10"></div>
+                  </div>
+                  <div className="border border-border bg-card">
+                    <div className="border-b border-border px-4 py-3 bg-muted">
+                      <div className="grid grid-cols-5 gap-4">
+                        {[1, 2, 3, 4, 5].map((i) => (
+                          <div
+                            key={i}
+                            className="h-3 w-16 bg-foreground/10"
+                          ></div>
+                        ))}
+                      </div>
+                    </div>
+                    {[1, 2, 3, 4, 5].map((i) => (
+                      <div
+                        key={i}
+                        className="border-b border-border px-4 py-3 last:border-b-0"
+                      >
+                        <div className="grid grid-cols-5 gap-4">
+                          {[1, 2, 3, 4, 5].map((j) => (
+                            <div
+                              key={j}
+                              className="h-4 w-20 bg-foreground/10"
+                            ></div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div>
+                  <PortfolioStrip />
+                </div>
+                <div>
+                  <MarketStatusRow />
+                </div>
+                <div>
+                  <IndicesSection data={indicesData} />
+                </div>
+                <div>
+                  <BreadthHeroChart topMovers={topMovers} />
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+                  <div className="lg:col-span-3">
+                    <NewsFeed />
+                  </div>
+                  <div className="lg:col-span-2">
+                    <ShortcutsGrid />
+                  </div>
+                </div>
+                <div>
+                  <WatchlistPositionsPreview />
+                </div>
+                <div>
+                  <TopMoversSection data={topMovers} />
+                </div>
+                <div>
+                  <TopMarketCap data={marketCapData} />
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}

@@ -1,0 +1,54 @@
+[Unit]
+Description=TradeKaro trading platform
+Documentation=https://github.com/h0i5/Foursight
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tradekaro
+Group=tradekaro
+WorkingDirectory=/opt/tradekaro
+
+# Secrets and runtime config. chmod 600, owned by the service user.
+EnvironmentFile=/opt/tradekaro/.env.production
+
+# `next start` reads both of these. HOSTNAME must be 0.0.0.0 or the server binds
+# to localhost only and nginx gets connection refused.
+Environment=NODE_ENV=production
+Environment=HOSTNAME=0.0.0.0
+Environment=PORT=3000
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+# ProtectHome=true hides /home, so give npm a HOME it can actually use. Without
+# this npm logs ENOENT noise looking for ~/.npmrc on every start.
+Environment=HOME=/opt/tradekaro
+
+ExecStart=/usr/bin/npm run start
+
+# The process owns a websocket to the market feed and a 60s square-off timer, so
+# it must come back on its own after a crash or a host reboot.
+Restart=always
+RestartSec=5
+
+# Give it time to finish in-flight requests on a clean stop; SQLite is in WAL
+# mode and a hard kill can leave a -wal file behind.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=tradekaro
+
+# --- Hardening --------------------------------------------------------------
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+# The SQLite database and its backups live here and must stay writable.
+ReadWritePaths=/opt/tradekaro/data
+
+[Install]
+WantedBy=multi-user.target

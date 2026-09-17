@@ -1,0 +1,37 @@
+# --- Dependencies & build output -------------------------------------------
+node_modules
+.next
+out
+build
+dist
+
+# --- Secrets: MUST stay out of the image ------------------------------------
+# `COPY . .` would otherwise bake these into a layer, where anyone who can pull
+# the image can read them back out.
+.env
+.env.*
+!.env.example
+*.pem
+
+# --- Runtime state: mounted as a volume, never baked in ---------------------
+# The SQLite database and its backups hold real accounts and admin hashes.
+data
+backups
+
+# --- Dev noise ---------------------------------------------------------------
+*.log
+coverage
+.DS_Store
+*.tsbuildinfo
+.vscode
+.idea
+
+# --- Repo metadata -----------------------------------------------------------
+.git
+.gitignore
+.github
+AGENTS.md
+CLAUDE.md
+docs
+*.md
+!README.md
