@@ -1,6 +1,13 @@
 // Smoke tests for the market gateway + key pages.
 // Usage: node scripts/smoke.mjs [baseURL]  (default http://localhost:3000)
+//
+// SMOKE_ONLY=<substring> runs just the checks whose name contains it, which is
+// handy against a live host where you want one answer and not a full database
+// of test traffic.
+import { randomUUID } from "node:crypto";
+
 const BASE = process.argv[2] || "http://localhost:3000";
+const ONLY = process.env.SMOKE_ONLY || "";
 
 const results = [];
 let failed = 0;
@@ -39,6 +46,7 @@ async function get(path) {
 }
 
 async function check(name, fn) {
+  if (ONLY && !name.includes(ONLY)) return;
   try {
     const res = await fn();
     if (res.ok) {
@@ -795,8 +803,10 @@ await check("adminpw: rotate own console password", async () => {
   };
 
   const email = `smoke-pw-${Date.now()}@local`;
-  const start = "SmokeStart123";
-  const rotated = "SmokeRotated456";
+  // Never a constant. This account is briefly a real superadmin on whichever
+  // host the suite runs against, so a guessable password is a live risk.
+  const start = "Sm" + randomUUID().replace(/-/g, "");
+  const rotated = "Sm" + randomUUID().replace(/-/g, "");
   let madeId = "";
   try {
     const mk = await fetch(BASE + "/api/admin/users", {
