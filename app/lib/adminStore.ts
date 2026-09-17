@@ -75,6 +75,15 @@ export type AdminSettings = {
     allowAfterHours: boolean;
     autoSquareOff: boolean;
     squareOffTime: string;
+    /**
+     * Allow fractional commodity lots, down to a single quoted unit.
+     *
+     * On by default: a whole lot of MCX gold is Rs 1.53 crore and needs Rs 7.65
+     * lakh of margin, so whole-lot-only leaves almost every commodity out of
+     * reach on a practice balance. Turn it OFF to make the paper book mirror the
+     * exchange exactly and accept whole lots only.
+     */
+    fractionalLots: boolean;
   };
   orderDefaults: { defaultQty: number; confirmOrders: boolean };
   alertLimits: { maxPerUser: number };
@@ -153,6 +162,7 @@ export const DEFAULT_SETTINGS: AdminSettings = {
     allowAfterHours: false,
     autoSquareOff: true,
     squareOffTime: "15:15",
+    fractionalLots: true,
   },
   orderDefaults: { defaultQty: 1, confirmOrders: true },
   alertLimits: { maxPerUser: 20 },

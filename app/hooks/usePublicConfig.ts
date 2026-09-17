@@ -42,6 +42,8 @@ export type PublicConfig = {
     brokeragePct: number;
     autoSquareOff: boolean;
     squareOffTime: string;
+    /** Fractional commodity lots allowed, down to one quoted unit. */
+    fractionalLots?: boolean;
   };
   alertLimits: { maxPerUser: number };
   kyc: {
@@ -105,6 +107,7 @@ const FALLBACK: PublicConfig = {
     brokeragePct: 0,
     autoSquareOff: true,
     squareOffTime: "15:15",
+    fractionalLots: true,
   },
   alertLimits: { maxPerUser: 20 },
   kyc: { minDeposit: 25000 },

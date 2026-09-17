@@ -1222,6 +1222,19 @@ export default function AdminPage() {
                   "closes intraday positions at the cutoff",
                 )}
                 {text("MIS square-off time (IST)", "trading.squareOffTime")}
+                {toggle(
+                  "Fractional commodity lots",
+                  "trading.fractionalLots",
+                  "allows orders down to one quoted unit (0.01 of a 100-unit gold lot)",
+                )}
+                <Callout tone="info">
+                  On: a customer can buy 1 unit of gold (10 g) instead of a
+                  whole 1 kg lot. A whole MCX gold lot is about ₹1.53 crore, so
+                  whole-lot-only puts most commodities out of reach on a
+                  practice balance. Off: the paper book mirrors the exchange
+                  exactly and accepts whole lots only. Fractions of a{" "}
+                  <em>unit</em> are always refused either way.
+                </Callout>
                 {action(
                   "Square off intraday legs now",
                   "Runs the risk sweep immediately. Does nothing before the cutoff — it never closes a leg the customer is still entitled to hold.",

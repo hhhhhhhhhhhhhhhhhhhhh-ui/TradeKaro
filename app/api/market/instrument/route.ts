@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   commodityContract,
+  commoditySymbols,
   instrumentMasterInfo,
   lookupInstrumentKey,
 } from "@/app/lib/instruments";
@@ -37,19 +38,29 @@ function describe(symbol: string, key: string | null, com: unknown) {
 }
 
 export async function GET(req: NextRequest) {
+  // `?all=commodities` lists every commodity root the master carries, which is
+  // how the /commodities page builds its ladder without hardcoding 30 names.
+  const all =
+    req.nextUrl.searchParams.get("all") === "commodities"
+      ? await commoditySymbols().catch(() => [])
+      : [];
+
   const raw =
     req.nextUrl.searchParams.get("symbols") ||
     req.nextUrl.searchParams.get("symbol") ||
     "";
-  const list = raw
-    .split(",")
-    .map((s) => s.trim().toUpperCase())
-    .filter(Boolean)
-    .slice(0, 50);
+  const list = (
+    all.length
+      ? all
+      : raw
+          .split(",")
+          .map((s) => s.trim().toUpperCase())
+          .filter(Boolean)
+  ).slice(0, 200);
 
   if (!list.length)
     return NextResponse.json(
-      { error: "Pass ?symbols=GOLD,SILVER", items: [] },
+      { error: "Pass ?symbols=GOLD,SILVER, or ?all=commodities", items: [] },
       { status: 400 },
     );
 

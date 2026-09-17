@@ -658,29 +658,43 @@ export async function validateFill(
       reason: "qty_cap",
     };
 
-  // Commodities trade in LOTS, never bare units. The exchange takes 100 units of
-  // silver and rejects 50, so a ledger that accepts arbitrary quantities books
-  // positions that could not exist — and every P&L figure derived from them
-  // inherits the error.
+  // Commodities are quoted in units and traded in lots (MCX silver is 100 units
+  // to a lot, gold 100). The atom enforced here is the quoted UNIT, not the lot.
+  //
+  // A whole lot of MCX gold is Rs 1.53 crore and needs Rs 7.65 lakh of margin,
+  // which no practice account needs as a barrier — so fractional lots are
+  // allowed down to a single unit. 0.01 of a 100-unit lot IS one unit, which is
+  // 10 grams of gold.
+  //
+  // What is still refused is a fraction of a UNIT (0.005 of that lot): half a
+  // unit is not something the exchange prices, so the rule is "whole units"
+  // rather than no rule at all. The distinction matters — this is the one guard
+  // that keeps a position from being sized to something that cannot exist.
+  //
+  // `trading.fractionalLots: false` restores strict whole-lot enforcement, for an
+  // operator who wants the paper book to mirror the exchange exactly.
   //
   // Quantity stays in UNITS end to end, so the ledger, margin and valuation
-  // arithmetic is byte-for-byte the same as an equity leg; only the ticket
-  // thinks in lots and multiplies before it posts.
-  //
-  // Placed before the margin and price work so a malformed lot size fails
-  // cheaply, and it never trusts a client-supplied lot size.
+  // arithmetic is byte-for-byte the same as an equity leg; only the ticket thinks
+  // in lots and multiplies before it posts.
   const contract = await commodityContract(symbol);
   if (contract && contract.lot > 0) {
     const lot = Math.round(contract.lot);
-    if (!Number.isInteger(qty) || qty % lot !== 0) {
+    const fractional = rules.fractionalLots !== false;
+    const step = fractional ? 1 : lot;
+    if (!Number.isInteger(qty) || qty < step || qty % step !== 0) {
       const lots = qty / lot;
+      const lotsTxt = Number.isFinite(lots) ? ` (${lots.toFixed(3)} lots)` : "";
+      const smallest = `1 unit (${Number((1 / lot).toFixed(4))} lots)`;
       return {
         ok: false,
-        error:
-          `${symbol} trades in lots of ${lot} units. ` +
-          `${qty} is not a whole number of lots` +
-          (Number.isFinite(lots) ? ` (${lots.toFixed(2)})` : "") +
-          `. Nearest valid: ${Math.max(1, Math.round(lots)) * lot} units.`,
+        error: fractional
+          ? `${symbol} is quoted in whole units — ${lot} units to a lot. ` +
+            `${qty} is not a whole number of units${lotsTxt}. ` +
+            `Smallest order: ${smallest}.`
+          : `${symbol} trades in whole lots of ${lot} units. ` +
+            `${qty} is not a whole number of lots${lotsTxt}. ` +
+            `Nearest valid: ${Math.max(1, Math.round(lots)) * lot} units.`,
         status: 400,
         reason: "bad_lot",
       };

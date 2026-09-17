@@ -44,6 +44,7 @@ export async function GET() {
       brokeragePct: s.trading.brokeragePct,
       autoSquareOff: s.trading.autoSquareOff,
       squareOffTime: s.trading.squareOffTime,
+      fractionalLots: s.trading.fractionalLots !== false,
     },
     alertLimits: s.alertLimits,
     kyc: {

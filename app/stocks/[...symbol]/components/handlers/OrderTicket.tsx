@@ -37,6 +37,12 @@ export default function OrderTicket(props: {
   const { meta } = useInstrument(props.symbol);
   const lot = lotOf(meta);
   const isCommodity = Boolean(meta?.isCommodity);
+  // Fractional lots, down to one quoted unit. A whole MCX gold lot is about
+  // ₹1.53 crore, so whole-lot-only would leave commodities unreachable on a
+  // practice balance. The smallest step is one UNIT expressed in lots — 0.01 for
+  // gold's 100-unit lot. The operator can turn this off from the console.
+  const fractional = tradingRules?.fractionalLots !== false;
+  const minLots = isCommodity && fractional ? 1 / lot : 1;
   // The session follows the instrument, not the app: MCX trades until 23:30 and
   // the cash market until 15:30, so a ticket fixed on NSE hours locked itself
   // eight hours before the commodity bell.
@@ -54,11 +60,13 @@ export default function OrderTicket(props: {
     return Number.isFinite(saved) && saved > 0 ? Math.floor(saved) : 1;
   });
   // A commodity default of "10" would read as ten LOTS — a thousand units of
-  // silver, ₹2.2 lakh of exposure — so reset to one lot the moment we learn what
-  // this is, unless the customer has already typed something.
+  // silver, ₹2.2 lakh of exposure — so drop to the smallest tradable size the
+  // moment we learn what this is, unless the customer has already typed
+  // something. One unit rather than one lot, because one lot of gold does not
+  // fit a practice balance.
   useEffect(() => {
-    if (isCommodity && !qtyTouched.current) setQty(1);
-  }, [isCommodity]);
+    if (isCommodity && !qtyTouched.current) setQty(minLots);
+  }, [isCommodity, minLots]);
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
   const [product, setProduct] = useState<Product>("CNC");
   const [limitPrice, setLimitPrice] = useState(props.ltp);
@@ -92,11 +100,20 @@ export default function OrderTicket(props: {
   const [loading, setLoading] = useState(false);
   const { ticks } = useLiveTicks([props.symbol], 3000);
   const liveLtp = ticks[props.symbol.toUpperCase()]?.ltp || props.ltp;
-  // `qty` is what the customer typed (lots, for a commodity). Everything
-  // downstream works in UNITS, so the valuation, margin and charges arithmetic
-  // is identical for a commodity and an equity — and matches the server, which
-  // only ever sees units.
-  const units = qty * lot;
+  // `qty` is what the customer typed (lots, possibly fractional for a
+  // commodity). Everything downstream works in UNITS, so the valuation, margin
+  // and charges arithmetic is identical for a commodity and an equity — and
+  // matches the server, which only ever sees units.
+  //
+  // The rounding is not cosmetic: 0.01 × 100 is 1.0000000000000002 in binary
+  // floating point, so an exact check would reject a perfectly valid 0.01 gold
+  // lot. Units are snapped to an integer and the drift is bounded instead.
+  const rawUnits = qty * lot;
+  const units = Math.round(rawUnits);
+  const unitsOk = units > 0 && Math.abs(rawUnits - units) < 1e-6;
+  // "0.01 lots" reads better than "0.010000000000000002 lots".
+  const lotCount = Number(qty.toFixed(4));
+  const lotText = `${lotCount} lot${lotCount === 1 ? "" : "s"}`;
   const estValue =
     units * (orderType === "MARKET" ? liveLtp : limitPrice || liveLtp);
   // MIS shows 5x leverage but orders block full value, so the
@@ -155,7 +172,7 @@ export default function OrderTicket(props: {
     // A commodity is quoted in a lot count the customer recognises, but the
     // rupee figures are always the unit maths.
     const label = isCommodity
-      ? `${units} ${props.symbol} (${qty} lot${qty === 1 ? "" : "s"})`
+      ? `${units} ${props.symbol} (${lotText})`
       : `${qty} ${props.symbol}`;
     sileo.success({
       title: `${side} ${label} @ ₹${execPrice.toFixed(2)} [${orderType}/${product}]`,
@@ -166,7 +183,17 @@ export default function OrderTicket(props: {
 
   async function submit(e: any) {
     e.preventDefault();
-    if (qty <= 0) return;
+    if (!qty) return;
+    if (!unitsOk) {
+      sileo.error({
+        title: isCommodity
+          ? `${props.symbol} is quoted in whole units — ${Number(
+              (1 / lot).toFixed(4),
+            )} lot is the smallest step`
+          : "Enter a whole quantity",
+      });
+      return;
+    }
     if (!session.allowed) {
       sileo.error({ title: session.reason || "Market is closed" });
       return;
@@ -206,7 +233,11 @@ export default function OrderTicket(props: {
         localStorage.getItem("fs_confirm_orders") !== "off");
     if (needConfirm) {
       const ok = window.confirm(
-        `${props.side} ${isCommodity ? `${qty} lot${qty === 1 ? "" : "s"} = ${units} ` : qty + " "}${decodeURIComponent(props.symbol)} @ ₹${(orderType === "MARKET" ? liveLtp : limitPrice || liveLtp).toFixed(2)}?`,
+        `${props.side} ${
+          isCommodity
+            ? `${units} unit${units === 1 ? "" : "s"} (${lotText}) of `
+            : `${qty} `
+        }${decodeURIComponent(props.symbol)} @ ₹${(orderType === "MARKET" ? liveLtp : limitPrice || liveLtp).toFixed(2)}?`,
       );
       if (!ok) return;
     }
@@ -304,28 +335,51 @@ export default function OrderTicket(props: {
             </label>
             <input
               type="number"
-              min="1"
-              step="1"
+              min={minLots}
+              step={minLots}
               value={qty}
               onChange={(e) => {
                 qtyTouched.current = true;
-                setQty(Math.max(1, parseInt(e.target.value) || 1));
+                const n = parseFloat(e.target.value);
+                setQty(Number.isFinite(n) && n > 0 ? n : minLots);
               }}
               className="min-h-[44px] w-full rounded-md border border-border px-3 py-2 font-mono text-base tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:text-[13px]"
             />
             {isCommodity && (
               <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
-                {qty} lot{qty === 1 ? "" : "s"} ={" "}
-                <span className="font-mono tabular-nums text-foreground/80">
-                  {units}
-                </span>{" "}
-                units · lot size{" "}
-                <span className="font-mono tabular-nums text-foreground/80">
-                  {lot}
-                </span>
-                {meta?.contract?.expiry ? (
-                  <> · expires {meta.contract.expiry}</>
-                ) : null}
+                {unitsOk ? (
+                  <>
+                    <span className="font-mono tabular-nums text-foreground/80">
+                      {units}
+                    </span>{" "}
+                    unit{units === 1 ? "" : "s"} · lot size{" "}
+                    <span className="font-mono tabular-nums text-foreground/80">
+                      {lot}
+                    </span>
+                    {fractional ? (
+                      <>
+                        {" "}
+                        · smallest order{" "}
+                        <span className="font-mono tabular-nums">
+                          {Number((1 / lot).toFixed(4))}
+                        </span>{" "}
+                        lot
+                      </>
+                    ) : null}
+                    {meta?.contract?.expiry ? (
+                      <> · expires {meta.contract.expiry}</>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    Not a whole number of units.{" "}
+                    <span className="font-mono tabular-nums">
+                      {Number((1 / lot).toFixed(4))}
+                    </span>{" "}
+                    lot is the smallest step
+                    {fractional ? "" : " — whole lots only right now"}.
+                  </>
+                )}
               </p>
             )}
           </div>
@@ -380,7 +434,7 @@ export default function OrderTicket(props: {
           )}
           <button
             type="submit"
-            disabled={loading || qty <= 0 || marketClosed}
+            disabled={loading || !unitsOk || marketClosed}
             className="w-full px-4 py-3 min-h-[52px] text-sm font-mono font-semibold border transition-colors disabled:opacity-50 bg-foreground text-background sticky bottom-0 active:scale-[0.99]"
           >
             {marketClosed ? (
