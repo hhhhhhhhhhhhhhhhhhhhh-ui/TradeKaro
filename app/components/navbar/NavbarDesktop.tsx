@@ -26,6 +26,9 @@ const NAV_LINKS = [
   { label: "Positions", href: "/positions", auth: true },
   { label: "Watchlist", href: "/watchlist", auth: true },
   { label: "Top Movers", href: "/topmovers" },
+  // Public on purpose: news is not account data, so it is a shop-window page
+  // like /stocks and /topmovers rather than something to gate behind a login.
+  { label: "News", href: "/news" },
   { label: "Profile", href: "/profile", auth: true },
 ];
 

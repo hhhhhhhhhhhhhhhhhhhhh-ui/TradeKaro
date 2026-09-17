@@ -1,5 +1,6 @@
 "use client";
 import axios from "axios";
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { apiURL } from "@/app/components/apiURL";
 import Loading from "@/app/components/Loading";
@@ -36,9 +37,12 @@ export default function NewsFeed() {
     <div className="broker-card broker-card-hover overflow-hidden">
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <span className="eyebrow">News · Filings</span>
-        <span className="rounded-md border border-border bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground">
-          MARKET NEWS
-        </span>
+        <Link
+          href="/news"
+          className="rounded-md border border-border bg-muted px-2 py-0.5 text-[10.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          VIEW ALL →
+        </Link>
       </div>
       {loading ? (
         <div className="py-8 flex justify-center">

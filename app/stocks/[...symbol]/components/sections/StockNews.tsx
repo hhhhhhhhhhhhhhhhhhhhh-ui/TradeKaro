@@ -11,19 +11,17 @@ export default function StockNews(props: { symbol: string }) {
   useEffect(() => {
     async function load() {
       try {
-        const r = await axios.post(apiURL + "/announcements");
+        // Ask the server for THIS scrip. It resolves the symbol to a provider
+        // instrument key, so the match is exact. This used to pull the whole
+        // market feed and substring-match the JSON, which both missed real
+        // coverage and matched names that merely appeared in a headline.
+        const r = await axios.post(apiURL + "/announcements", {
+          scrip: props.symbol,
+        });
         const body: any = r.data || {};
         const all: any[] =
           body.articles || body.data || body.announcements || [];
-        setItems(
-          all
-            .filter((n: any) =>
-              JSON.stringify(n)
-                .toUpperCase()
-                .includes(props.symbol.toUpperCase()),
-            )
-            .slice(0, 8),
-        );
+        setItems(all.slice(0, 8));
       } catch {
         setItems([]);
       } finally {
