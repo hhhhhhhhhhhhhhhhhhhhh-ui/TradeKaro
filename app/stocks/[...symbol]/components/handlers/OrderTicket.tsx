@@ -114,6 +114,12 @@ export default function OrderTicket(props: {
   // "0.01 lots" reads better than "0.010000000000000002 lots".
   const lotCount = Number(qty.toFixed(4));
   const lotText = `${lotCount} lot${lotCount === 1 ? "" : "s"}`;
+  // The contract's OWN tick, not a fixed 5 paise. The master has always carried
+  // it and it was thrown away, so the stepper moved in 0.05 increments on an MCX
+  // contract quoted in ₹100 steps — letting a customer pick a price the exchange
+  // does not have, on the instrument where the error is largest.
+  const tickSize =
+    Number(meta?.contract?.tick) > 0 ? Number(meta?.contract?.tick) : 0.05;
   const estValue =
     units * (orderType === "MARKET" ? liveLtp : limitPrice || liveLtp);
   // MIS shows 5x leverage but orders block full value, so the
@@ -393,7 +399,7 @@ export default function OrderTicket(props: {
               </label>
               <input
                 type="number"
-                step="0.05"
+                step={tickSize}
                 value={limitPrice}
                 onChange={(e) => setLimitPrice(parseFloat(e.target.value) || 0)}
                 className="min-h-[44px] w-full rounded-md border border-border px-3 py-2 font-mono text-base tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:text-[13px]"
@@ -407,7 +413,7 @@ export default function OrderTicket(props: {
               </label>
               <input
                 type="number"
-                step="0.05"
+                step={tickSize}
                 value={triggerPrice}
                 onChange={(e) =>
                   setTriggerPrice(parseFloat(e.target.value) || 0)

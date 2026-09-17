@@ -5,9 +5,11 @@ import { apiURL } from "@/app/components/apiURL";
 import { NavTransition } from "@/app/components/navbar/NavTransition";
 import Loading from "@/app/components/Loading";
 import { FiSearch } from "react-icons/fi";
+import { useCommodities } from "@/app/hooks/useCommodities";
 
 // Day-change + volume screener over the top-movers universe.
 export default function ScreenerPage() {
+  const commodities = useCommodities();
   const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [minChg, setMinChg] = useState(2);
@@ -24,6 +26,9 @@ export default function ScreenerPage() {
           ...(d.data?.TOP_GAINERS?.items || []),
           ...(d.data?.TOP_LOSERS?.items || []),
           ...(d.data?.TOP_VOLUME?.items || []),
+          // Commodities screen on the same terms as equities — a day-change
+          // screener that silently ignored an entire asset class was the gap.
+          ...(d.data?.TOP_COMMODITIES?.items || []),
         ];
         const flat = raw.map((it: any) => ({
           symbol:
@@ -44,7 +49,15 @@ export default function ScreenerPage() {
         const seen = new Map();
         for (const it of flat)
           if (it.symbol && !seen.has(it.symbol)) seen.set(it.symbol, it);
-        setRows(Array.from(seen.values()));
+        // Tag the venue so a gold contract is not mistaken for a share.
+        setRows(
+          Array.from(seen.values()).map((it) => ({
+            ...it,
+            venue: commodities.some((c) => c.symbol === it.symbol)
+              ? "MCX"
+              : "EQ",
+          })),
+        );
       } catch {
         setRows([]);
       } finally {
@@ -52,7 +65,10 @@ export default function ScreenerPage() {
       }
     }
     load();
-  }, []);
+    // Re-runs once when the commodity list arrives, so the venue tags are right
+    // rather than everything defaulting to EQ. The list is fetched once per
+    // session and its identity is stable, so this cannot loop.
+  }, [commodities]);
 
   const out = rows
     .filter((r) => {
@@ -128,12 +144,17 @@ export default function ScreenerPage() {
                 <span
                   className={`text-right ${(r.dayChangePerc ?? 0) >= 0 ? "text-positive" : "text-negative"}`}
                 >
-                  {Number(r.dayChangePerc ?? r.pChange ?? 0).toFixed(2)}%
+                  {(r.dayChangePerc ?? r.pChange ?? 0)
+                    ? `${Number(r.dayChangePerc ?? r.pChange ?? 0).toFixed(2)}%`
+                    : "—"}
                 </span>
                 <span className="text-right">
                   {Number(r.volume ?? r.totalTradedVolume ?? 0).toLocaleString(
                     "en-IN",
                   )}
+                </span>
+                <span className="col-span-4 -mt-1 text-[10.5px] uppercase tracking-wide text-muted-foreground">
+                  {r.venue === "MCX" ? "MCX commodity" : r.companyName || ""}
                 </span>
               </div>
             ))}

@@ -1,4 +1,5 @@
 import { runtimeSettings } from "./adminRuntime";
+import { commoditySymbols } from "./instruments";
 import { cached } from "./marketCache";
 import {
   hasUpstox,
@@ -100,24 +101,24 @@ export function shapeMover(i: Mover) {
   };
 }
 
-export async function computeMovers(size: number): Promise<{
-  gainers: Mover[];
-  losers: Mover[];
-  byVolume: Mover[];
-  providerOn: boolean;
-}> {
-  const rs = await runtimeSettings().catch(() => null);
-  if (rs?.upstoxToken) setRuntimeToken(rs.upstoxToken);
-  if (!hasUpstox() || rs?.providerOff)
-    return { gainers: [], losers: [], byVolume: [], providerOn: false };
-
-  const symbols = Object.keys(UNIVERSE);
+/**
+ * Quote a bag of symbols and shape them as movers.
+ *
+ * Batched ten at a time because the provider caps a batch request, and cached
+ * per chunk so the movers page and the screener share one upstream call. A
+ * failed chunk is skipped rather than thrown: half a page of movers beats none.
+ */
+async function quoteMovers(
+  ns: string,
+  symbols: string[],
+  nameOf: (s: string) => string,
+): Promise<Mover[]> {
   const all: Mover[] = [];
   for (let i = 0; i < symbols.length; i += 10) {
     const chunk = symbols.slice(i, i + 10);
     try {
       const { data } = await cached(
-        `movers:${chunk.join(",")}`,
+        `movers:${ns}:${chunk.join(",")}`,
         60000,
         async () => {
           const keys = await Promise.all(chunk.map((s) => resolveUpstoxKey(s)));
@@ -129,7 +130,7 @@ export async function computeMovers(size: number): Promise<{
               const ltp = Number(q.ltp) || 0;
               return {
                 symbol: sym,
-                name: UNIVERSE[sym] || sym,
+                name: nameOf(sym),
                 ltp,
                 dayChange: prev ? ltp - prev : 0,
                 dayChangePerc: prev ? ((ltp - prev) / prev) * 100 : 0,
@@ -145,10 +146,32 @@ export async function computeMovers(size: number): Promise<{
       );
       all.push(...(data as Mover[]));
     } catch {
-      /* partial results ok */
+      /* partial results are fine */
     }
   }
+  return all;
+}
 
+async function providerReady(): Promise<boolean> {
+  const rs = await runtimeSettings().catch(() => null);
+  if (rs?.upstoxToken) setRuntimeToken(rs.upstoxToken);
+  return Boolean(hasUpstox()) && !rs?.providerOff;
+}
+
+export async function computeMovers(size: number): Promise<{
+  gainers: Mover[];
+  losers: Mover[];
+  byVolume: Mover[];
+  providerOn: boolean;
+}> {
+  if (!(await providerReady()))
+    return { gainers: [], losers: [], byVolume: [], providerOn: false };
+
+  const all = await quoteMovers(
+    "eq",
+    Object.keys(UNIVERSE),
+    (s) => UNIVERSE[s] || s,
+  );
   const gainers = [...all]
     .filter((m) => m.dayChangePerc > 0)
     .sort((a, b) => b.dayChangePerc - a.dayChangePerc)
@@ -159,4 +182,26 @@ export async function computeMovers(size: number): Promise<{
     .slice(0, size);
   const byVolume = [...all].sort((a, b) => b.volume - a.volume).slice(0, size);
   return { gainers, losers, byVolume, providerOn: true };
+}
+
+/**
+ * The commodity movers.
+ *
+ * Read from the instrument master rather than a hardcoded list. The equity
+ * universe above is exactly the kind of static table that left commodities out
+ * of every market-survey surface — a hand-kept list cannot learn about a new MCX
+ * root, and this one does, for free.
+ *
+ * Ranked by ABSOLUTE day change, because one list has to carry both directions:
+ * on a volatile day in gold the losers are as interesting as the gainers, and
+ * splitting them into two more tabs would bury the page's whole point.
+ */
+export async function computeCommodityMovers(size: number): Promise<Mover[]> {
+  if (!(await providerReady())) return [];
+  const symbols = await commoditySymbols().catch(() => []);
+  if (!symbols.length) return [];
+  const all = await quoteMovers("cmdty", symbols, (s) => s);
+  return all
+    .sort((a, b) => Math.abs(b.dayChangePerc) - Math.abs(a.dayChangePerc))
+    .slice(0, size);
 }

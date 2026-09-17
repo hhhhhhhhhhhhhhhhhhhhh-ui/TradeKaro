@@ -2,9 +2,16 @@
 import { useState } from "react";
 import { sileo } from "sileo";
 import { addAlert, getAlerts, removeAlert } from "@/app/lib/alerts";
+import { useInstrument } from "@/app/hooks/useInstrument";
 
 // LTP / % alert creator for current scrip.
 export default function AlertBox(props: { symbol: string; ltp: number }) {
+  const { meta } = useInstrument(props.symbol);
+  // The contract's tick, so the stepper is usable on a commodity. A fixed 0.05
+  // is meaningless against a quote of ₹1,53,048 — you would need three million
+  // clicks to move it a percent.
+  const tickSize =
+    Number(meta?.contract?.tick) > 0 ? Number(meta?.contract?.tick) : 0.05;
   const [op, setOp] = useState(">=" as ">=" | "<=");
   const [price, setPrice] = useState(props.ltp);
   const [list, setList] = useState(() =>
@@ -34,7 +41,7 @@ export default function AlertBox(props: { symbol: string; ltp: number }) {
         </select>
         <input
           type="number"
-          step="0.05"
+          step={tickSize}
           value={price}
           onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
           className="flex-1 border border-border px-3 py-2 text-sm font-mono"

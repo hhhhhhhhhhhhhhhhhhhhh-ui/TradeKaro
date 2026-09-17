@@ -9,6 +9,7 @@ export default function TopMovers() {
     TOP_GAINERS: { items: [] },
     TOP_LOSERS: { items: [] },
     TOP_VOLUME: { items: [] },
+    TOP_COMMODITIES: { items: [] },
   });
   const [loading, setLoading] = useState(true);
   const [display, setDisplay] = useState("Gainers");
@@ -31,6 +32,9 @@ export default function TopMovers() {
     { key: "Gainers", label: "GAINERS" },
     { key: "Losers", label: "LOSERS" },
     { key: "Volume", label: "VOLUME" },
+    // Its own tab rather than mixed into the equity lists: a 2% move in gold and
+    // a 2% move in a large-cap are different events, on different sessions.
+    { key: "Commodities", label: "COMMODITIES" },
   ];
 
   return (
@@ -41,7 +45,8 @@ export default function TopMovers() {
             Top movers
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            Biggest gainers and losers in the NSE universe.
+            Biggest gainers and losers in the NSE universe, plus the MCX
+            commodity contracts ranked by how far they moved.
           </p>
         </div>
 
@@ -95,6 +100,9 @@ export default function TopMovers() {
             )}
             {display === "Volume" && (
               <MoversGrid apiData={topMovers.TOP_VOLUME?.items ?? []} />
+            )}
+            {display === "Commodities" && (
+              <MoversGrid apiData={topMovers.TOP_COMMODITIES?.items ?? []} />
             )}
           </div>
         )}

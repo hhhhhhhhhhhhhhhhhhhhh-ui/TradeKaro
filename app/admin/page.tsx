@@ -901,6 +901,7 @@ export default function AdminPage() {
                   />
                 </div>
               </Card>
+              <InstrumentMaster />
             </>
           )}
 
@@ -3867,6 +3868,108 @@ function ChangePassword() {
         the admin table is empty. Editing the file after that has no effect —
         change it here instead.
       </Callout>
+    </Card>
+  );
+}
+
+// Instrument master health.
+//
+// The master is the single source for symbol -> instrument key, so when it fails
+// to load, every quote, lot size and commodity lookup fails with it — and it
+// fails SILENTLY, because an unloaded master and an empty market look identical
+// from the storefront. `instrumentMasterInfo()` has reported its state on
+// /api/market/stats for a while and nothing read it, so a stale or half-built
+// commodity map was invisible from here.
+function InstrumentMaster() {
+  const [st, setSt] = useState<{
+    loaded: boolean;
+    eq?: number;
+    idx?: number;
+    com?: number;
+    at?: number;
+    loading?: boolean;
+    error?: string | null;
+  } | null>(null);
+  const [err, setErr] = useState("");
+
+  function load() {
+    setErr("");
+    fetch("/api/market/stats", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setSt(j?.instruments ?? null))
+      .catch((e) => setErr(String(e?.message || e)));
+  }
+  useEffect(load, []);
+
+  // Absent entirely: /api/market/stats reports `loaded: false` until something in
+  // that route bundle has triggered a load, which is not itself a fault — the
+  // counts below are what tell the truth.
+  const ageMin = st?.at ? Math.round((Date.now() - st.at) / 60_000) : 0;
+  const age = !st?.at
+    ? "—"
+    : ageMin < 60
+      ? `${ageMin}m ago`
+      : ageMin < 1440
+        ? `${Math.round(ageMin / 60)}h ago`
+        : `${Math.round(ageMin / 1440)}d ago`;
+  const com = Number(st?.com ?? 0);
+  const eq = Number(st?.eq ?? 0);
+
+  return (
+    <Card
+      title="Instrument master"
+      sub="Symbol resolution, lot sizes and commodity contracts all come from here."
+      action={
+        <button onClick={load} className={btnGhost}>
+          Refresh
+        </button>
+      }
+    >
+      {err ? (
+        <Callout tone="warn">{err}</Callout>
+      ) : st === null ? (
+        <div className="text-[12px] text-muted-foreground">Loading…</div>
+      ) : (
+        <>
+          <div className="grid gap-2 text-[12px] sm:grid-cols-2">
+            <SnapshotRow k="Loaded" v={st.loaded ? "yes" : "no"} />
+            <SnapshotRow k="Built" v={age} />
+            <SnapshotRow
+              k="Equities"
+              v={eq ? eq.toLocaleString("en-IN") : "—"}
+            />
+            <SnapshotRow
+              k="Indices"
+              v={st.idx ? st.idx.toLocaleString("en-IN") : "—"}
+            />
+            <SnapshotRow k="Commodities" v={com ? String(com) : "—"} />
+          </div>
+          {eq > 0 && com === 0 ? (
+            <Callout tone="warn">
+              The master built but carries no commodity contracts, so every MCX
+              symbol will fail to resolve and /commodities will be empty. Bump{" "}
+              <code>MASTER_VERSION</code> in <code>app/lib/instruments.ts</code>{" "}
+              and refresh — the disk cache is trusted for a week.
+            </Callout>
+          ) : null}
+          {eq === 0 ? (
+            <Callout tone="warn">
+              No instruments are loaded, so quoting and ordering will fail for
+              every symbol. Check the provider reachability, then refresh.
+            </Callout>
+          ) : null}
+          {st.error ? (
+            <div className="mt-2">
+              <div className="text-[11px] font-semibold text-muted-foreground">
+                Last build error
+              </div>
+              <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded border border-border bg-muted/40 p-2 text-[10.5px] leading-relaxed text-muted-foreground">
+                {st.error}
+              </pre>
+            </div>
+          ) : null}
+        </>
+      )}
     </Card>
   );
 }

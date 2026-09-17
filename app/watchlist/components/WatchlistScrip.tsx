@@ -1,6 +1,7 @@
 "use client";
 import { apiURL } from "@/app/components/apiURL";
 import { symbols } from "@/app/components/symbols";
+import { useCommodities } from "@/app/hooks/useCommodities";
 import axios from "axios";
 import Link from "next/link";
 import { getCookie } from "cookies-next";
@@ -14,17 +15,25 @@ export default function WatchlistScrip({
   onRemove: (symbol: string) => void;
 }) {
   const token = getCookie("token") as string | undefined;
+  const commodities = useCommodities();
   const symbol = scrip.symbol;
   const ltp = scrip.ltp;
   const dayChange = scrip.dayChange;
   const dayChangePerc = scrip.dayChangePerc;
   const isPositive = dayChange > 0;
 
-  function getCompanyName(symbol: string) {
-    const found = symbols.find((s) => s.Scrip === decodeURIComponent(symbol));
-    return found?.["Company Name"] || "";
-  }
-  const companyName = getCompanyName(symbol);
+  // The equity master first, then the commodity master.
+  //
+  // This only knew about equities, so a commodity row rendered NO name at all —
+  // a watchlist entry for GOLD appeared as a bare ticker with a blank line under
+  // it. Falling through to the commodity list also gives the row a venue, which
+  // is the one thing a reader needs to tell an MCX contract from a share.
+  const key = decodeURIComponent(String(symbol || "")).toUpperCase();
+  const equity = symbols.find((s) => s.Scrip === key);
+  const commodity = commodities.find((c) => c.symbol === key);
+  const companyName = commodity
+    ? `${commodity.segmentLabel} · lot ${commodity.lot}`
+    : equity?.["Company Name"] || "";
 
   async function handleRemove() {
     try {
