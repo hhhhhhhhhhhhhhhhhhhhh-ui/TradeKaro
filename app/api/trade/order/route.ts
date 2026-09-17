@@ -57,6 +57,9 @@ export async function POST(req: NextRequest) {
           ? body.optionSide
           : undefined,
       lotSize: Number(body?.lotSize) || undefined,
+      // Filled in below with the venue the validator actually checked the order
+      // against. Declared here so the type allows it to be assigned afterwards.
+      exchange: undefined as string | undefined,
     },
   };
 
@@ -84,8 +87,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (!verdict.duplicate)
+  if (!verdict.duplicate) {
+    // Record the venue on the fill. Only the validator knows it — it is the side
+    // that consulted the instrument master — and the book needs it to label a
+    // commodity leg as MCX rather than EQ. Stored on the server's own answer
+    // rather than anything the client sent, so the label cannot be spoofed.
+    input.meta = { ...input.meta, exchange: verdict.segment };
     commitFill(key, input, verdict.refPrice, verdict.charges);
+  }
   return NextResponse.json({
     ok: true,
     account: await publicAccount(key, me.email),

@@ -10,6 +10,7 @@ import {
 } from "react-icons/fi";
 import { money, pnlSigned } from "@/app/lib/format";
 import { type TradePos } from "@/app/lib/trading";
+import { useCommodities, venueTag } from "@/app/hooks/useCommodities";
 import type { Tick } from "@/app/hooks/useLiveTicks";
 
 // Mirrors the reference action sheet 1:1 — grabber, symbol + tags + LTP/change,
@@ -47,6 +48,7 @@ function fmtExpiry(x?: string): string {
 
 export default function PositionSheet(props: Props) {
   const { pos, ltp, ltpKnown, tick, busy } = props;
+  const commodities = useCommodities();
   const [step, setStep] = useState<"NONE" | "ADD" | "EXIT">("NONE");
   const [qty, setQty] = useState(1);
 
@@ -108,7 +110,7 @@ export default function PositionSheet(props: Props) {
   // Tag row: instrument · product · side — the reference's three badges.
   const instrument =
     pos.kind !== "OPTION"
-      ? "EQ"
+      ? venueTag(pos, commodities)
       : [
           fmtExpiry(pos.expiry),
           pos.strike != null ? `${pos.strike}${pos.optionSide ?? ""}` : "",

@@ -11,7 +11,7 @@ import DensityToggle from "@/app/components/DensityToggle";
 import parseJwt from "./utils/parseJwt";
 import { useLiveTicks } from "@/app/hooks/useLiveTicks";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
-import { isMarketLive, marketStatusLabel } from "@/app/lib/marketClock";
+import { broadMarketStatus } from "@/app/lib/marketClock";
 import axios from "axios";
 import { apiURL } from "@/app/components/apiURL";
 
@@ -154,14 +154,12 @@ export default function NavbarDesktop(props: any) {
 
   // Session state comes from the shared clock, which reads the admin panel's
   // window and holidays. This badge used to hardcode 09:15–15:30, so it
-  // disagreed with the status bar whenever an operator changed the hours.
+  // disagreed with the status bar whenever an operator changed the hours — and
+  // it asked about NSE alone, so it read "CLOSED" all evening while MCX traded.
   const { marketHours: navMarketHours, calendar: cfgCalendar } =
     usePublicConfig();
   const st = now
-    ? {
-        label: marketStatusLabel(navMarketHours, now, "NSE", cfgCalendar),
-        live: isMarketLive(navMarketHours, now, "NSE", cfgCalendar),
-      }
+    ? broadMarketStatus(navMarketHours, now, cfgCalendar)
     : { label: "…", live: false };
   const { live: feedLive } = useLiveTicks(["NIFTY"], 8000);
 

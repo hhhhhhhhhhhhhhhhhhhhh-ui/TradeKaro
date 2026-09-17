@@ -4,9 +4,10 @@ import TopMovers from "../components/sections/TopMovers/TopMovers";
 import { useSearchParams } from "next/navigation";
 import { symbols } from "../components/symbols";
 import { warmPrices } from "../lib/warmPrices";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 import SymbolSearch from "../components/SymbolSearch";
 import { useLiveTicks } from "../hooks/useLiveTicks";
+import { commoditySubtitle, useCommodities } from "@/app/hooks/useCommodities";
 
 // The default list. Ten liquid large caps that exist in the instrument master
 // *and* resolve on the live feed, so a visitor sees real prices immediately
@@ -124,14 +125,28 @@ function FeaturedList() {
 }
 
 function SearchResults({ query }: { query: string }) {
+  const commodities = useCommodities();
   const needle = query.toLowerCase();
-  const hits = symbols
-    .filter(
-      (s) =>
+  // Commodities are listed first so a ticker that names both an MCX contract and
+  // an NSE ETF shows the contract on top — that is the one the app quotes.
+  const hits = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { Scrip: string; "Company Name": string }[] = [];
+    for (const c of commodities) {
+      if (!c.symbol.toLowerCase().includes(needle)) continue;
+      seen.add(c.symbol);
+      out.push({ Scrip: c.symbol, "Company Name": commoditySubtitle(c) });
+    }
+    for (const s of symbols) {
+      if (seen.has(s.Scrip)) continue;
+      if (
         s["Company Name"].toLowerCase().includes(needle) ||
-        s["Scrip"].toLowerCase().includes(needle),
-    )
-    .slice(0, 50);
+        s.Scrip.toLowerCase().includes(needle)
+      )
+        out.push(s);
+    }
+    return out.slice(0, 50);
+  }, [needle, commodities]);
   const { ticks } = useLiveTicks(
     hits.slice(0, 10).map((s) => s["Scrip"]),
     5000,

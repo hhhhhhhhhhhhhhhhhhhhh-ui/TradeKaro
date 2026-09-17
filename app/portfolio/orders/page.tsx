@@ -5,6 +5,7 @@ import axios from "axios";
 import { getCookie } from "cookies-next";
 import { useEffect, useMemo, useState } from "react";
 import { getTrades, type TradeEntry } from "@/app/lib/trading";
+import { useCommodities, venueTag } from "@/app/hooks/useCommodities";
 
 type UnifiedRow = {
   id: string;
@@ -24,6 +25,7 @@ function toMs(t: any): number {
 }
 
 export default function OrderPage() {
+  const commodities = useCommodities();
   const token = getCookie("token") as string | undefined;
   const [broker, setBroker] = useState<any[]>([]);
   const [paper, setPaper] = useState<TradeEntry[]>([]);
@@ -192,7 +194,7 @@ export default function OrderPage() {
                       <span
                         className={`broker-pill px-2 py-px ${r.kind === "OPTION" ? "bg-accent/10 text-accent" : "bg-brand/10 text-brand"}`}
                       >
-                        {r.kind === "OPTION" ? "OPT" : "EQ"}
+                        {venueTag(r, commodities)}
                       </span>
                       <span>
                         {r.at
@@ -262,7 +264,7 @@ export default function OrderPage() {
                             <span
                               className={`broker-pill px-2 py-0.5 text-[11px] ${r.kind === "OPTION" ? "bg-accent/10 text-accent" : "bg-brand/10 text-brand"}`}
                             >
-                              {r.kind === "OPTION" ? "OPT" : "EQ"}
+                              {venueTag(r, commodities)}
                             </span>
                           </div>
                           <div className="text-right text-foreground text-xs">

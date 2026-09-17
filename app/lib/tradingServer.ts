@@ -10,10 +10,10 @@ import {
   isCommoditySegment,
   istInstant,
   istMinutes,
+  misCutoff,
   orderWindow,
   segmentClose,
   segmentPhase,
-  shiftHhmm,
   type DayCalendar,
   type ExchangeCode,
 } from "./marketClock";
@@ -68,6 +68,14 @@ export type DerivedPos = {
   strike?: number;
   optionSide?: "CE" | "PE";
   lotSize?: number;
+  /**
+   * Exchange the leg trades on, e.g. "MCX".
+   *
+   * Carried so the book can say what it is. Without it every commodity row was
+   * labelled "EQ", which reads as a data error to anyone holding gold. Absent on
+   * fills booked before this existed — callers fall back rather than guess.
+   */
+  exchange?: string;
 };
 
 export type TradeAccount = {
@@ -286,6 +294,7 @@ function applyToPositions(list: DerivedPos[], f: FillRow, meta: any) {
       strike: meta?.strike,
       optionSide: meta?.optionSide,
       lotSize: meta?.lotSize ?? 1,
+      exchange: meta?.exchange,
     });
     return;
   }
@@ -464,7 +473,20 @@ export type RejectReason =
   | "insufficient_margin";
 
 export type ValidateResult =
-  | { ok: true; refPrice: number | null; charges: number; duplicate?: boolean }
+  | {
+      ok: true;
+      refPrice: number | null;
+      charges: number;
+      duplicate?: boolean;
+      /**
+       * Which exchange the order was validated against.
+       *
+       * Returned so the caller can persist it on the fill: the venue is only
+       * known here, where the instrument master has been consulted, and the book
+       * needs it to label a commodity leg as MCX rather than EQ.
+       */
+      segment?: ExchangeCode;
+    }
   | {
       ok: false;
       error: string;
@@ -556,9 +578,13 @@ export function misCutoffHhmm(
   now = new Date(),
   cal?: DayCalendar | null,
 ): string {
-  if (isCommoditySegment(segment))
-    return shiftHhmm(segmentClose(rs.marketHours, now, segment, cal), -5);
-  return rs.trading?.squareOffTime || "15:15";
+  return misCutoff(
+    rs.marketHours,
+    rs.trading?.squareOffTime,
+    now,
+    segment,
+    cal,
+  );
 }
 
 export async function validateFill(
@@ -710,7 +736,14 @@ export async function validateFill(
     const dupe = db
       .prepare("SELECT id FROM trade_fills WHERE user_id = ? AND idem = ?")
       .get(key, input.idem) as { id: number } | undefined;
-    if (dupe) return { ok: true, refPrice: null, charges: 0, duplicate: true };
+    if (dupe)
+      return {
+        ok: true,
+        refPrice: null,
+        charges: 0,
+        duplicate: true,
+        segment,
+      };
   }
 
   // 1. Price must be real.
@@ -828,7 +861,7 @@ export async function validateFill(
     };
   }
 
-  return { ok: true, refPrice: ref.price, charges };
+  return { ok: true, refPrice: ref.price, charges, segment };
 }
 
 function locksShortCash(rules: any) {

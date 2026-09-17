@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useLiveTicks } from "@/app/hooks/useLiveTicks";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
-import { marketStatusLabel, isMarketLive } from "@/app/lib/marketClock";
+import { broadMarketStatus } from "@/app/lib/marketClock";
 
 // Bottom broker status bar: clock, market state, data source.
 export default function StatusBar() {
@@ -16,9 +16,13 @@ export default function StatusBar() {
   }, []);
   // One shared session clock (app/lib/marketClock.ts) — the same one the order
   // gate uses, so this bar can never claim the market is open while orders are
-  // being refused.
-  const st = now ? marketStatusLabel(marketHours, now, "NSE", calendar) : "…";
-  const isLive = now ? isMarketLive(marketHours, now, "NSE", calendar) : false;
+  // being refused. Across every segment we trade, not just NSE: asking about NSE
+  // alone made this bar read "CLOSED" all evening while MCX was open.
+  const status = now
+    ? broadMarketStatus(marketHours, now, calendar)
+    : { label: "…", live: false };
+  const st = status.label;
+  const isLive = status.live;
   return (
     <div
       className="hidden md:block fixed bottom-0 inset-x-0 z-40 border-t border-border bg-card/95 backdrop-blur"

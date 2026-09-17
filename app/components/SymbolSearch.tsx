@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { symbols } from "./symbols";
+import { commoditySubtitle, useCommodities } from "@/app/hooks/useCommodities";
 import { FiSearch, FiPlus, FiTrendingUp, FiArrowRight } from "react-icons/fi";
 
 // ── Unified instrument search ───────────────────────────────────────────────
@@ -105,6 +106,7 @@ export default function SymbolSearch({
   className?: string;
 }) {
   const router = useRouter();
+  const commodities = useCommodities();
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
@@ -140,24 +142,54 @@ export default function SymbolSearch({
     }));
 
     // Rank exact symbol, then symbol prefix, then company-name matches.
-    const scored: { score: number; hit: StockHit }[] = [];
+    const rank = (sym: string, name: string) => {
+      const symL = sym.toLowerCase();
+      const nameL = name.toLowerCase();
+      if (symL === needle) return 0;
+      if (symL.startsWith(needle)) return 1;
+      if (nameL.startsWith(needle)) return 2;
+      if (symL.includes(needle)) return 3;
+      if (nameL.includes(needle)) return 4;
+      return -1;
+    };
+
+    const scored: { score: number; venue: number; hit: StockHit }[] = [];
+
+    // Commodities are offered BEFORE equities at equal relevance. The rest of
+    // the app resolves a symbol to its MCX contract ahead of any equity (see
+    // `lookupInstrumentKey`), so search has to agree — ranking the SILVER ETF
+    // above the contract would send the customer to a different instrument than
+    // the one the app quotes.
+    for (const c of commodities) {
+      const score = rank(c.symbol, c.symbol);
+      if (score < 0) continue;
+      scored.push({
+        score,
+        venue: 0,
+        hit: {
+          kind: "stock",
+          symbol: c.symbol,
+          name: commoditySubtitle(c),
+        },
+      });
+    }
+
     for (const s of ALL_SYMBOLS) {
       const sym = s.Scrip;
       const name = s["Company Name"] || "";
-      const symL = sym.toLowerCase();
-      const nameL = name.toLowerCase();
-      let score = -1;
-      if (symL === needle) score = 0;
-      else if (symL.startsWith(needle)) score = 1;
-      else if (nameL.startsWith(needle)) score = 2;
-      else if (symL.includes(needle)) score = 3;
-      else if (nameL.includes(needle)) score = 4;
+      const score = rank(sym, name);
       if (score >= 0)
-        scored.push({ score, hit: { kind: "stock", symbol: sym, name } });
+        scored.push({
+          score,
+          venue: 1,
+          hit: { kind: "stock", symbol: sym, name },
+        });
     }
+
     scored.sort(
       (a, b) =>
         a.score - b.score ||
+        a.venue - b.venue ||
         a.hit.symbol.length - b.hit.symbol.length ||
         a.hit.symbol.localeCompare(b.hit.symbol),
     );
@@ -166,7 +198,7 @@ export default function SymbolSearch({
       chains,
       contracts,
     };
-  }, [q]);
+  }, [q, commodities]);
 
   // Flat list in render order — keyboard nav walks this.
   const hits: SearchHit[] = [...stocks, ...contracts, ...chains];

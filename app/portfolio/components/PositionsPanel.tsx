@@ -26,6 +26,8 @@ import {
 import PositionSheet from "./PositionSheet";
 import MisSquareOffNotice from "./MisSquareOffNotice";
 import { legKey } from "@/app/lib/positionKeys";
+import { useCommodities, venueTag } from "@/app/hooks/useCommodities";
+import { EQUITY_EXCHANGE, type ExchangeCode } from "@/app/lib/marketClock";
 import { FiChevronDown, FiSearch, FiShoppingCart } from "react-icons/fi";
 import { sileo } from "sileo";
 
@@ -111,8 +113,8 @@ function fmtExpiry(x?: string): string {
 }
 
 /** Right-hand caption of row 3: the instrument, not the side. */
-function instrumentLabel(p: TradePos | ClosedPosition): string {
-  if (p.kind !== "OPTION") return "EQ";
+function instrumentLabel(p: TradePos | ClosedPosition, venue: string): string {
+  if (p.kind !== "OPTION") return venue;
   const leg =
     p.strike != null
       ? `${p.strike}${p.optionSide ?? ""}`
@@ -139,6 +141,8 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
   const { positions, optPx, ticks, unrealized, refresh } = useLivePnl();
   const acct = useTradingAccount();
   const mounted = useMounted();
+  // Which market each row belongs to. A commodity leg is MCX, not EQ.
+  const commodities = useCommodities();
 
   // The panel owns its own revision counter so it works standalone on /positions
   // as well as embedded in the portfolio tabs — no parent wiring required.
@@ -449,7 +453,18 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
         </div>
 
         {/* ── total P&L = the sum of the rows below ── */}
-        <MisSquareOffNotice count={active.length} />
+        {/* Each leg's own exchange, because the cutoffs differ: cash squares off
+            at 15:15 and MCX at 23:25. */}
+        <MisSquareOffNotice
+          count={active.length}
+          segments={active.map(
+            (p) =>
+              (p.exchange ??
+                (venueTag(p, commodities) === "MCX"
+                  ? "MCX"
+                  : EQUITY_EXCHANGE)) as ExchangeCode,
+          )}
+        />
 
         <div className="pr-pnl">
           <div className="pr-pnl-label">Total P&amp;L</div>
@@ -511,7 +526,9 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                     </div>
                     <div className="pr-row pr-row-3">
                       <div className="pr-left">
-                        <span className="pr-sub">{instrumentLabel(c)}</span>
+                        <span className="pr-sub">
+                          {instrumentLabel(c, venueTag(c, commodities))}
+                        </span>
                       </div>
                       <div className="pr-right">
                         <span className="pr-sub">
@@ -569,7 +586,9 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                     </div>
                     <div className="pr-row pr-row-3">
                       <div className="pr-left">
-                        <span className="pr-sub">{instrumentLabel(p)}</span>
+                        <span className="pr-sub">
+                          {instrumentLabel(p, venueTag(p, commodities))}
+                        </span>
                       </div>
                       <div className="pr-right">
                         <span className="pr-sub">

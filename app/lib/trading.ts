@@ -30,6 +30,8 @@ export type TradeEntry = {
   strike?: number;
   optionSide?: "CE" | "PE";
   lotSize?: number;
+  /** Exchange code, e.g. "MCX". Sabotaged/legacy rows may not have it. */
+  exchange?: string;
 };
 
 export type TradePos = {
@@ -44,6 +46,8 @@ export type TradePos = {
   strike?: number;
   optionSide?: "CE" | "PE";
   lotSize?: number;
+  /** Exchange code, e.g. "MCX". */
+  exchange?: string;
 };
 
 const POS_KEY = "fs_positions";
@@ -575,6 +579,7 @@ export function executeFill(args: {
     strike: args.strike,
     optionSide: args.optionSide,
     lotSize: args.lotSize ?? 1,
+    exchange: segment,
   });
   const entry = logTrade({
     scrip: args.scrip,
@@ -588,6 +593,7 @@ export function executeFill(args: {
     strike: args.strike,
     optionSide: args.optionSide,
     lotSize: args.lotSize ?? 1,
+    exchange: segment,
   });
   // The fill only COUNTS once the server ledger accepts it (price sanity, cash,
   // holdings, risk rules). This is fire-and-forget so the UI stays instant; a

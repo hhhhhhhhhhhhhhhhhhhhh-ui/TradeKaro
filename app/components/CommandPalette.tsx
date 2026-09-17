@@ -1,7 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { symbols } from "@/app/components/symbols";
+import { commoditySubtitle, useCommodities } from "@/app/hooks/useCommodities";
 import { getWLs } from "@/app/lib/watchlists";
 import { warmPrices } from "@/app/lib/warmPrices";
 import { FiStar } from "react-icons/fi";
@@ -14,6 +15,8 @@ const PAGES = [
   { label: "Screener", href: "/screener" },
   { label: "Options", href: "/options" },
   { label: "Top Movers", href: "/topmovers" },
+  { label: "News", href: "/news" },
+  { label: "Commodities", href: "/commodities" },
 ];
 
 // Ctrl+K fuzzy jump to scrips, pages, actions.
@@ -21,6 +24,31 @@ export default function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const router = useRouter();
+  const commodities = useCommodities();
+
+  // Commodities first, then the equity master, de-duplicated by ticker.
+  //
+  // De-duplication matters: SILVER is both an MCX contract and an NSE ETF, so
+  // without it the list shows the ticker twice and React sees two children with
+  // the same key. The commodity wins because that is the instrument the rest of
+  // the app resolves the symbol to.
+  const universe = useMemo(() => {
+    const seen = new Set<string>();
+    const out: { Scrip: string; "Company Name": string }[] = [];
+    for (const c of commodities) {
+      const k = c.symbol.toUpperCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ Scrip: k, "Company Name": commoditySubtitle(c) });
+    }
+    for (const s of symbols as { Scrip: string; "Company Name": string }[]) {
+      const k = String(s.Scrip).toUpperCase();
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ Scrip: k, "Company Name": String(s["Company Name"] || "") });
+    }
+    return out;
+  }, [commodities]);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -37,8 +65,12 @@ export default function CommandPalette() {
   if (!open) return null;
   const query = q.trim().toUpperCase();
   const scrips = query
-    ? symbols
-        .filter((s: any) => String(s.Scrip).toUpperCase().includes(query))
+    ? universe
+        .filter(
+          (s) =>
+            s.Scrip.includes(query) ||
+            s["Company Name"].toUpperCase().includes(query),
+        )
         .slice(0, 8)
     : [];
   const wls = (() => {
@@ -82,14 +114,19 @@ export default function CommandPalette() {
               → {p.label}
             </button>
           ))}
-          {scrips.map((s: any) => (
+          {scrips.map((s) => (
             <button
               key={s.Scrip}
               onClick={() => go(`/stocks/${encodeURIComponent(s.Scrip)}`)}
               onMouseEnter={() => warmPrices(s.Scrip)}
-              className="flex w-full rounded-md px-4 py-2 text-left text-[13px] hover:bg-muted"
+              className="flex w-full items-baseline rounded-md px-4 py-2 text-left text-[13px] hover:bg-muted"
             >
-              <span>{s.Scrip}</span>
+              <span className="font-medium">{s.Scrip}</span>
+              {s["Company Name"] ? (
+                <span className="ml-2 truncate text-[11.5px] text-muted-foreground">
+                  {s["Company Name"]}
+                </span>
+              ) : null}
               {wls.includes(s.Scrip) ? (
                 <FiStar
                   size={13}

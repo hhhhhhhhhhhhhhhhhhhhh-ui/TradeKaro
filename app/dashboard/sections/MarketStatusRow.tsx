@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useLiveTicks } from "@/app/hooks/useLiveTicks";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
-import { isMarketLive, marketStatusLabel } from "@/app/lib/marketClock";
+import { broadMarketStatus } from "@/app/lib/marketClock";
 
 // Market status row: LIVE pill + NIFTY/SENSEX/BANKNIFTY live ticks + IST clock.
 export default function MarketStatusRow() {
@@ -16,11 +16,10 @@ export default function MarketStatusRow() {
     return () => clearInterval(id);
   }, []);
 
+  // Across every segment we trade. Asking about NSE alone said "CLOSED" all
+  // evening while MCX was open.
   const st = now
-    ? {
-        label: marketStatusLabel(marketHours, now, "NSE", calendar),
-        live: isMarketLive(marketHours, now, "NSE", calendar),
-      }
+    ? broadMarketStatus(marketHours, now, calendar)
     : { label: "…", live: false };
   const clock = now
     ? now.toLocaleTimeString("en-IN", {

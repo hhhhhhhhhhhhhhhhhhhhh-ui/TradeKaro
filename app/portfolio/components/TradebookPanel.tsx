@@ -7,11 +7,13 @@ import {
 } from "@/app/lib/trading";
 import { money, pnlSigned } from "@/app/lib/format";
 import { useMounted } from "@/app/hooks/useMounted";
+import { useCommodities, venueTag } from "@/app/hooks/useCommodities";
 
 export default function TradebookPanel() {
   const [filter, setFilter] = useState<"ALL" | InstrumentKind>("ALL");
   const [tick, setTick] = useState(0);
   const mounted = useMounted();
+  const commodities = useCommodities();
   // Re-read on each render + manual refresh; localStorage is the store.
   // Gated on mount: the server cannot see localStorage, so reading it while
   // rendering made the first client pass disagree with the SSR HTML.
@@ -66,7 +68,7 @@ export default function TradebookPanel() {
                 <span
                   className={`text-[10px] font-bold px-1.5 py-0.5 ${t.side === "BUY" ? "bg-positive/15 text-positive" : "bg-negative/15 text-negative"}`}
                 >
-                  {t.side} {t.kind === "OPTION" ? "· OPT" : "· EQ"}
+                  {t.side} · {venueTag(t, commodities)}
                 </span>
                 <span className="block text-[11px] display-num text-foreground/60">
                   {money(t.value)}

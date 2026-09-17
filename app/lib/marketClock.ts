@@ -283,6 +283,34 @@ export function segmentOpen(
   return segmentFallbackHours(cfg, segment).open;
 }
 
+/**
+ * When new intraday legs stop being accepted for one segment, `HH:MM` IST.
+ *
+ * This is the ONE definition. The order gate, the MIS square-off sweep and the
+ * customer-facing countdown all call it, and they have to agree — a notice
+ * promising 15:15 while the sweep closes at 23:25 is worse than no notice at
+ * all, and a gate that allows a leg the sweep is about to flatten books a
+ * phantom round trip. It lives here rather than beside the sweep because the
+ * browser needs it too and cannot import the server module.
+ *
+ * Equities use the operator's configured cutoff (15:15 by default, deliberately
+ * before the 15:30 close so the exit still has a market to price against).
+ * Commodities derive theirs from their OWN session end: MCX runs to 23:30, so an
+ * inherited 15:15 would stop accepting gold legs at lunchtime and flatten open
+ * ones while the exchange was still trading.
+ */
+export function misCutoff(
+  cfg: MarketHours | undefined,
+  adminCutoff: string | undefined,
+  now: Date,
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
+): string {
+  if (isCommoditySegment(segment))
+    return shiftHhmm(segmentClose(cfg, now, segment, cal), -5);
+  return adminCutoff || "15:15";
+}
+
 export function isMarketLive(
   cfg: MarketHours | undefined,
   now = new Date(),
@@ -310,6 +338,52 @@ export function marketStatusLabel(
     default:
       return "CLOSED · POST-MARKET";
   }
+}
+
+/**
+ * The segments the platform actually trades, in the order the chrome should
+ * prefer them. Cash first because it is what most customers mean by "the market".
+ */
+export const TRADED_SEGMENTS: ExchangeCode[] = [
+  EQUITY_EXCHANGE,
+  "NFO",
+  "MCX",
+  "NSCOM",
+];
+
+/**
+ * Session status across every market we trade, for the global status chrome.
+ *
+ * The navbar, footer and dashboard row all asked about NSE alone. Most of the
+ * working day that is fine, but from 15:30 to 23:30 they told the whole platform
+ * "CLOSED · POST-MARKET" while MCX was open — so a customer holding live gold
+ * was told the market was shut, on the same screen showing the position.
+ *
+ * A single tag cannot describe four exchanges, so it names the one that is
+ * open, preferring cash when cash is open. Only when nothing is open does it
+ * fall back to reporting the primary market's reason.
+ */
+export function broadMarketStatus(
+  cfg: MarketHours | undefined,
+  now = new Date(),
+  cal?: DayCalendar | null,
+): { label: string; live: boolean; segments: ExchangeCode[] } {
+  const live = TRADED_SEGMENTS.filter(
+    (s) => segmentPhase(cfg, now, s, cal) === "LIVE",
+  );
+  if (live.length) {
+    const lead = live.includes(EQUITY_EXCHANGE) ? EQUITY_EXCHANGE : live[0];
+    return {
+      label: `LIVE · ${EXCHANGE_LABEL[lead]} OPEN`,
+      live: true,
+      segments: live,
+    };
+  }
+  return {
+    label: marketStatusLabel(cfg, now, EQUITY_EXCHANGE, cal),
+    live: false,
+    segments: [],
+  };
 }
 
 function closedReason(
