@@ -770,6 +770,127 @@ await check("mis: intraday leg is squared off server-side", async () => {
   }
 });
 
+// ── console password rotation ───────────────────────────────────────────────
+// The console credential is the one secret an operator cannot repair from the
+// outside: ADMIN_PASSWORD is only read while the admin table is empty, so if
+// this path breaks the only fix is hand-editing SQLite. That makes it worth a
+// real test.
+//
+// It runs as a throwaway superadmin rather than the bootstrap account, so a
+// half-finished run can never leave the real console password rotated to a
+// value nobody knows. The throwaway is deleted in `finally`.
+await check("adminpw: rotate own console password", async () => {
+  const login = await fetch(BASE + "/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
+  });
+  const cookie = ((login.headers.getSetCookie?.() || [])
+    .join("; ")
+    .match(/admin_token=([^;]+)/) || [])[1];
+  if (!cookie) return { ok: false, info: "skipped — no admin session" };
+  const adminHeaders = {
+    "Content-Type": "application/json",
+    Cookie: "admin_token=" + cookie,
+  };
+
+  const email = `smoke-pw-${Date.now()}@local`;
+  const start = "SmokeStart123";
+  const rotated = "SmokeRotated456";
+  let madeId = "";
+  try {
+    const mk = await fetch(BASE + "/api/admin/users", {
+      method: "POST",
+      headers: adminHeaders,
+      body: JSON.stringify({ email, password: start, role: "superadmin" }),
+    }).then((r) => r.json());
+    if (!mk?.ok)
+      return {
+        ok: false,
+        info: `could not create test admin: ${mk?.error || "unknown"}`,
+      };
+
+    const list = await fetch(BASE + "/api/admin/users", {
+      headers: { Cookie: "admin_token=" + cookie },
+    }).then((r) => r.json());
+    madeId = (list?.users || []).find((u) => u.email === email)?.id || "";
+    if (!madeId) return { ok: false, info: "test admin has no id" };
+
+    // Sign in as the throwaway so the rotation is aimed at its own account.
+    const asNew = await fetch(BASE + "/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: start }),
+    });
+    const newCookie = ((asNew.headers.getSetCookie?.() || [])
+      .join("; ")
+      .match(/admin_token=([^;]+)/) || [])[1];
+    if (!newCookie) return { ok: false, info: "throwaway login failed" };
+    const asNewHeaders = {
+      "Content-Type": "application/json",
+      Cookie: "admin_token=" + newCookie,
+    };
+
+    const change = (body) =>
+      fetch(BASE + "/api/admin/password", {
+        method: "POST",
+        headers: asNewHeaders,
+        body: JSON.stringify(body),
+      }).then((r) => r.status);
+
+    const wrongCurrent = await change({ current: "nope", next: rotated });
+    const tooShort = await change({ current: start, next: "short" });
+    const sameAsOld = await change({ current: start, next: start });
+    const good = await change({ current: start, next: rotated });
+
+    // The real proof is not the 200 — it is that the old secret stops working
+    // and the new one starts.
+    const loginOld = await fetch(BASE + "/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: start }),
+    }).then((r) => r.status);
+    const loginNew = await fetch(BASE + "/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password: rotated }),
+    }).then((r) => r.status);
+
+    // Non-mutating guard: the console must refuse to delete the account you are
+    // signed in with.
+    const selfDelete = await fetch(
+      BASE + "/api/admin/users?id=" + encodeURIComponent(list?.users?.find((u) => u.email === ADMIN_EMAIL)?.id || ""),
+      { method: "DELETE", headers: { Cookie: "admin_token=" + cookie } },
+    ).then((r) => r.status);
+
+    return {
+      ok:
+        wrongCurrent === 401 &&
+        tooShort === 400 &&
+        sameAsOld === 400 &&
+        good === 200 &&
+        loginOld === 401 &&
+        loginNew === 200 &&
+        selfDelete === 400,
+      info:
+        `bad-current=${wrongCurrent} short=${tooShort} same=${sameAsOld} ` +
+        `change=${good} old-login=${loginOld} new-login=${loginNew} ` +
+        `self-delete=${selfDelete}`,
+    };
+  } finally {
+    if (madeId) {
+      const del = await fetch(
+        BASE + "/api/admin/users?id=" + encodeURIComponent(madeId),
+        { method: "DELETE", headers: { Cookie: "admin_token=" + cookie } },
+      ).catch(() => ({ status: 0 }));
+      if (del.status !== 200)
+        console.log(
+          `WARN  could not delete smoke admin ${email} (${del.status}) — remove it by hand`,
+        );
+    }
+  }
+});
+
 console.log("\n─── smoke results ───");
 for (const line of results) console.log(line);
 console.log(`\n${results.length - failed}/${results.length} passed`);

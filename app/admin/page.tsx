@@ -970,6 +970,7 @@ export default function AdminPage() {
                 )}
                 <AdminUsers canEdit={canEdit} />
               </Card>
+              <ChangePassword />
             </>
           )}
 
@@ -3735,6 +3736,119 @@ function AdminUsers({ canEdit }: { canEdit: boolean }) {
           {busy ? "ADDING…" : "ADD"}
         </button>
       </div>
+    </Card>
+  );
+}
+
+// Rotate the credential you are currently signed in with. Every role can do
+// this for their own account — no superadmin gate, since locking someone out
+// of their own password would just push them back to the env bootstrap value.
+function ChangePassword() {
+  const [cur, setCur] = useState("");
+  const [next, setNext] = useState("");
+  const [again, setAgain] = useState("");
+  const [msg, setMsg] = useState("");
+  const [ok, setOk] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit() {
+    setMsg("");
+    setOk(false);
+    if (!cur || !next || !again) return setMsg("Fill in all three fields.");
+    if (next.length < 8) return setMsg("New password must be 8+ characters.");
+    if (next !== again) return setMsg("New passwords don't match.");
+    if (next === cur) return setMsg("New password matches the current one.");
+
+    setBusy(true);
+    try {
+      const r = await fetch("/api/admin/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current: cur, next }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        setMsg(j.error || `Could not change password (${r.status})`);
+        return;
+      }
+      setCur("");
+      setNext("");
+      setAgain("");
+      setOk(true);
+      setMsg(
+        j.revoked
+          ? `Password changed. ${j.revoked} other session(s) signed out.`
+          : "Password changed.",
+      );
+    } catch (e: any) {
+      setMsg(e?.message || "Could not change password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card
+      title="Your console password"
+      sub="Changes the credential you are signed in with. Minimum 8 characters."
+    >
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Field label="Current password">
+          <input
+            value={cur}
+            onChange={(e) => setCur(e.target.value)}
+            type="password"
+            autoComplete="current-password"
+            placeholder="current"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="New password">
+          <input
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            type="password"
+            autoComplete="new-password"
+            placeholder="8+ characters"
+            className={inputCls}
+          />
+        </Field>
+        <Field label="Confirm new password">
+          <input
+            value={again}
+            onChange={(e) => setAgain(e.target.value)}
+            type="password"
+            autoComplete="new-password"
+            placeholder="repeat"
+            className={inputCls}
+          />
+        </Field>
+      </div>
+      {msg ? (
+        <div
+          className={`rounded-lg border px-3 py-2 text-[12px] font-semibold ${
+            ok
+              ? "border-positive/30 bg-positive/10 text-positive"
+              : "border-negative/30 bg-negative/10 text-negative"
+          }`}
+        >
+          {msg}
+        </div>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        <button disabled={busy} onClick={submit} className={btnPrimary}>
+          {busy ? "SAVING…" : "CHANGE PASSWORD"}
+        </button>
+        <span className="text-[11px] text-muted-foreground">
+          Other browsers signed in as you get logged out.
+        </span>
+      </div>
+      <Callout tone="warn" title="Rotate the bootstrap password soon">
+        The first-boot <span className="font-mono">ADMIN_PASSWORD</span> in{" "}
+        <span className="font-mono">.env.production</span> is only read while
+        the admin table is empty. Editing the file after that has no effect —
+        change it here instead.
+      </Callout>
     </Card>
   );
 }

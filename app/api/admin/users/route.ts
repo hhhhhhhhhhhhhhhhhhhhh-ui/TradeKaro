@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   audit,
+  getSessions,
   getUsers,
   hashPass,
   newSalt,
+  saveSessions,
   saveUsers,
 } from "@/app/lib/adminStore";
 import { adminFrom, deny, needAdmin } from "../_guard";
@@ -61,4 +63,54 @@ export async function POST(req: NextRequest) {
     detail: em,
   });
   return NextResponse.json({ ok: true });
+}
+
+// DELETE ?id=<id> — remove a console operator (superadmin only).
+//
+// Two refusals are load-bearing: deleting yourself would revoke the session you
+// are holding, and deleting the last remaining superadmin would leave a console
+// that nobody can administer. Both are checked before anything is written.
+export async function DELETE(req: NextRequest) {
+  const a = await adminFrom(req);
+  if (!a || !needAdmin(a.user.role, "superadmin")) return deny();
+
+  const id = new URL(req.url).searchParams.get("id") || "";
+  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  if (id === a.user.id)
+    return NextResponse.json(
+      { error: "You cannot delete your own account" },
+      { status: 400 },
+    );
+
+  const users = await getUsers();
+  const target = users.find((u) => u.id === id);
+  if (!target)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+  const superadmins = users.filter((u) => u.role === "superadmin").length;
+  if (target.role === "superadmin" && superadmins <= 1)
+    return NextResponse.json(
+      { error: "Cannot delete the last superadmin" },
+      { status: 400 },
+    );
+
+  await saveUsers(users.filter((u) => u.id !== id));
+
+  // Their sessions would otherwise outlive the account and keep resolving
+  // against a user row that no longer exists.
+  const sessions = await getSessions();
+  const keep = sessions.filter((s) => s.adminId !== id);
+  const revoked = sessions.length - keep.length;
+  if (revoked > 0) await saveSessions(keep);
+
+  await audit({
+    at: Date.now(),
+    adminId: a.user.id,
+    email: a.user.email,
+    action: "admin.delete",
+    detail: target.email,
+    ip: req.headers.get("x-forwarded-for") || "local",
+  });
+
+  return NextResponse.json({ ok: true, revoked });
 }
