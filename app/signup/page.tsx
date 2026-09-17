@@ -7,7 +7,6 @@ var crypto = require("crypto");
 import { NavTransition } from "../components/navbar/NavTransition";
 import Loading from "../components/Loading";
 import { sileo } from "sileo";
-import { useRouter } from "next/navigation";
 import { FiAlertCircle, FiCheck, FiEye, FiEyeOff } from "react-icons/fi";
 import { isPhone, normalisePhone } from "../lib/phone";
 
@@ -60,7 +59,6 @@ function ErrorLine({
 }
 
 export default function SignUpPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [username, setUsername] = useState("");
@@ -157,7 +155,11 @@ export default function SignUpPage() {
       });
       if (login?.status === 200) {
         sileo.success({ title: `Welcome to TradeKaro, ${uname}` });
-        router.replace("/dashboard");
+        // Full load rather than router.replace(): the same router-cache
+        // problem as the login page. A cached signed-out redirect would
+        // bounce them straight back off /dashboard and leave them staring at
+        // the form they just submitted.
+        window.location.assign("/dashboard");
         return;
       }
     } catch {
@@ -165,7 +167,7 @@ export default function SignUpPage() {
     }
     setLoading(false);
     sileo.success({ title: "Account created — please sign in" });
-    router.replace("/login");
+    window.location.assign("/login");
   }
 
   return (

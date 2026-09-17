@@ -117,6 +117,31 @@ function isProtected(pathname: string) {
   return PROTECTED.some((p) => pathname === p || pathname.startsWith(p + "/"));
 }
 
+/**
+ * Send a visitor to the login screen.
+ *
+ * `no-store` is load-bearing. A "you must sign in" bounce is a statement about
+ * the session at one instant, and anything that replays it after the user has
+ * signed in strands them on the login page with a valid cookie — the failure
+ * looks exactly like the sign-in button doing nothing. Cloudflare sits in front
+ * of this origin, so an uncacheable response is not a nicety.
+ */
+function toLogin(request: NextRequest, back: string) {
+  // Built by hand rather than via Response.redirect(): that helper returns a
+  // response with immutable headers, so adding Cache-Control to it throws and
+  // every protected page answers 500.
+  return new Response(null, {
+    status: 302,
+    headers: {
+      Location: new URL(
+        `/login?next=${encodeURIComponent(back)}`,
+        request.url,
+      ).toString(),
+      "Cache-Control": "no-store, must-revalidate",
+    },
+  });
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("token")?.value;
@@ -133,10 +158,7 @@ export async function proxy(request: NextRequest) {
     if (ok) return undefined;
     // Carry the destination — query string included — so signing in returns
     // them to the exact page and filters they asked for.
-    const back = pathname + (request.nextUrl.search || "");
-    return Response.redirect(
-      new URL(`/login?next=${encodeURIComponent(back)}`, request.url),
-    );
+    return toLogin(request, pathname + (request.nextUrl.search || ""));
   }
 
   // The landing page is public, but a signed-in visitor gets their dashboard.

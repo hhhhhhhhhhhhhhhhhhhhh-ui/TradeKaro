@@ -3,7 +3,7 @@ import { usernameRegex, emailRegex } from "../components/regexHandlers";
 import { useState, useEffect, Suspense } from "react";
 import axios from "axios";
 import { apiURL } from "../components/apiURL";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 var crypto = require("crypto");
 import { NavTransition } from "../components/navbar/NavTransition";
 import Loading from "../components/Loading";
@@ -65,7 +65,6 @@ function safeNext(raw: string | null | undefined) {
 }
 
 function LoginContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   // Where the proxy sent them from, so signing in returns them there.
   const requested = searchParams?.get("next") || "";
@@ -124,7 +123,14 @@ function LoginContent() {
       });
       if (res?.status === 200) {
         sileo.success({ title: "Signed in" });
-        router.replace(next);
+        // Hard navigation on purpose. `router.replace()` is a client-side
+        // transition, and the router cache can hold a redirect it recorded
+        // while the visitor was signed out — replaying the trip back to
+        // /login. That makes a successful sign-in look like nothing happened:
+        // the toast fires and the page never changes. A full load also sends
+        // the brand-new cookie on the very first request for the target page,
+        // so the gate cannot see a stale session.
+        window.location.assign(next);
         return;
       }
       setLoading(false);

@@ -941,7 +941,11 @@ await check("auth: private pages redirect visitors to /login", async () => {
 
   const probe = async (p) => {
     const r = await fetch(BASE + p, { redirect: "manual" });
-    return { status: r.status, to: r.headers.get("location") || "" };
+    return {
+      status: r.status,
+      to: r.headers.get("location") || "",
+      cache: r.headers.get("cache-control") || "",
+    };
   };
 
   const leaks = [];
@@ -953,6 +957,11 @@ await check("auth: private pages redirect visitors to /login", async () => {
     // lands on the dashboard instead of the page they asked for.
     if (!bounced || !r.to.includes("next="))
       leaks.push(`${p}->${r.status}${r.to ? `:${r.to}` : ""}`);
+    // A cacheable bounce gets replayed after sign-in and strands the user on
+    // the login page holding a perfectly valid cookie — which reads as "the
+    // sign-in button does nothing".
+    else if (!r.cache.includes("no-store"))
+      leaks.push(`${p} bounce cacheable (${r.cache || "no cache-control"})`);
   }
 
   const broken = [];
@@ -968,6 +977,64 @@ await check("auth: private pages redirect visitors to /login", async () => {
       : broken.length
         ? `public page not 200: ${broken.join(", ")}`
         : `${PRIVATE.length} private bounced, ${PUBLIC.length} public open`,
+  };
+});
+
+// ── a fresh session can actually open a protected page ───────────────────────
+// The reported symptom was "it says signed in but never leaves the sign-in
+// page". The server half of that is the gate refusing a token it just issued —
+// a signing-secret mismatch, or a session cookie the proxy will not accept.
+// Both are invisible to the checks above, which only ever assert that signed-OUT
+// requests are refused.
+await check("auth: a signed-in session opens a protected page", async () => {
+  const stamp = Date.now().toString(36);
+  const uname = `sess_${stamp}`;
+  const reg = await post("/api/v1/auth/register", {
+    username: uname,
+    email: `${uname}@test.local`,
+    password: "Session@1234",
+    phone: "9" + String(Date.now()).slice(-9),
+  });
+  if (reg.status !== 200) return { ok: false, info: `register=${reg.status}` };
+
+  const log = await fetch(BASE + "/api/v1/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username: uname, password: "Session@1234" }),
+  });
+  const setCookies = log.headers.getSetCookie?.() || [];
+  const cookie = ((setCookies.join("; ").match(/token=([^;]+)/) || [])[1]) || "";
+  if (!cookie) return { ok: false, info: "login issued no token cookie" };
+
+  // Every page the client may redirect to straight after signing in.
+  const targets = ["/dashboard", "/portfolio", "/positions", "/watchlist"];
+  const refused = [];
+  for (const t of targets) {
+    const r = await fetch(BASE + t, {
+      headers: { Cookie: "token=" + cookie },
+      redirect: "manual",
+    });
+    if (r.status !== 200) refused.push(`${t}->${r.status}`);
+  }
+
+  // And the login page must actively push a signed-in visitor onwards instead
+  // of showing them the form again.
+  const loginPage = await fetch(BASE + "/login", {
+    headers: { Cookie: "token=" + cookie },
+    redirect: "manual",
+  });
+  const pushedOn =
+    loginPage.status >= 300 &&
+    loginPage.status < 400 &&
+    (loginPage.headers.get("location") || "").includes("/dashboard");
+
+  return {
+    ok: !refused.length && pushedOn,
+    info: refused.length
+      ? `token rejected for: ${refused.join(", ")}`
+      : pushedOn
+        ? `${targets.length} pages opened, /login redirects to /dashboard`
+        : `signed-in /login did not redirect (${loginPage.status})`,
   };
 });
 
