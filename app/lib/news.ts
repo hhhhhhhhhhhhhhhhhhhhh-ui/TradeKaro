@@ -126,7 +126,9 @@ function toItem(raw: any, i: number): NewsItem | null {
     ? raw.instrument_keys.map(String)
     : [];
   return {
-    id: String(raw?.id || `${heading.slice(0, 40)}:${raw?.published_time || i}`),
+    id: String(
+      raw?.id || `${heading.slice(0, 40)}:${raw?.published_time || i}`,
+    ),
     heading: heading || "Market update",
     summary: String(raw?.summary || "").trim(),
     thumbnail: String(raw?.thumbnail || "").trim(),

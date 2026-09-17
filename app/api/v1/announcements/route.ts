@@ -31,7 +31,11 @@ function wanted(get: (k: string) => string | undefined, body: any): string[] {
   return [
     ...new Set(
       list
-        .map((s: any) => String(s || "").toUpperCase().trim())
+        .map((s: any) =>
+          String(s || "")
+            .toUpperCase()
+            .trim(),
+        )
         .filter(Boolean),
     ),
   ].slice(0, 30);
@@ -46,9 +50,7 @@ function payload(items: any[], wanted: string[], req: NextRequest) {
     ...(items.length ? {} : { reason: newsLastError() || "no items returned" }),
     // ?debug=1 returns a sample raw row, because the provider's field names are
     // undocumented and a wrong guess degrades quietly.
-    ...(req.nextUrl.searchParams.get("debug")
-      ? { sample: newsSample() }
-      : {}),
+    ...(req.nextUrl.searchParams.get("debug") ? { sample: newsSample() } : {}),
     scrip: wanted.length === 1 ? wanted[0] : null,
     symbols: wanted,
     articles: items.map((it) => asAnnouncement(it, wanted[0])),
@@ -63,7 +65,9 @@ async function respond(req: NextRequest) {
     /* an empty body means "market news" */
   }
   const symbols = wanted((k) => body?.[k], body);
-  const items = symbols.length ? await newsForSymbols(symbols) : await marketNews();
+  const items = symbols.length
+    ? await newsForSymbols(symbols)
+    : await marketNews();
   return NextResponse.json(payload(items, symbols, req));
 }
 
@@ -73,7 +77,12 @@ export async function POST(req: NextRequest) {
 
 /** Same payload over GET, so the feed is cacheable and easy to inspect. */
 export async function GET(req: NextRequest) {
-  const symbols = wanted((k) => req.nextUrl.searchParams.get(k) || undefined, null);
-  const items = symbols.length ? await newsForSymbols(symbols) : await marketNews();
+  const symbols = wanted(
+    (k) => req.nextUrl.searchParams.get(k) || undefined,
+    null,
+  );
+  const items = symbols.length
+    ? await newsForSymbols(symbols)
+    : await marketNews();
   return NextResponse.json(payload(items, symbols, req));
 }

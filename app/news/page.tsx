@@ -102,7 +102,9 @@ function Section(props: {
       <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
         <span className="eyebrow">{props.title}</span>
         {props.hint ? (
-          <span className="text-[11px] text-muted-foreground">{props.hint}</span>
+          <span className="text-[11px] text-muted-foreground">
+            {props.hint}
+          </span>
         ) : null}
       </div>
       {props.articles.length ? (
@@ -156,7 +158,8 @@ export default function NewsPage() {
         setScrips(held);
         if (held.length) {
           const n = await axios.get(
-            apiURL + `/announcements?symbols=${encodeURIComponent(held.join(","))}`,
+            apiURL +
+              `/announcements?symbols=${encodeURIComponent(held.join(","))}`,
           );
           setPersonal(n.data?.articles || []);
         } else {

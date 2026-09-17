@@ -1023,43 +1023,49 @@ const COMMODITY_EXPECT = {
   ZINC: { segment: "MCX", lot: 5 },
 };
 
-await check("market: commodity roots resolve to their own contracts", async () => {
-  const r = await get(
-    "/api/market/instrument?symbols=" +
-      [...Object.keys(COMMODITY_EXPECT), "RELIANCE"].join(","),
-  );
-  if (r.status !== 200)
-    return { ok: false, info: `status=${r.status} ${r.json?.error || ""}` };
+await check(
+  "market: commodity roots resolve to their own contracts",
+  async () => {
+    const r = await get(
+      "/api/market/instrument?symbols=" +
+        [...Object.keys(COMMODITY_EXPECT), "RELIANCE"].join(","),
+    );
+    if (r.status !== 200)
+      return { ok: false, info: `status=${r.status} ${r.json?.error || ""}` };
 
-  const items = r.json?.items || [];
-  const by = Object.fromEntries(items.map((i) => [i.symbol, i]));
-  const bad = [];
-  const seen = [];
+    const items = r.json?.items || [];
+    const by = Object.fromEntries(items.map((i) => [i.symbol, i]));
+    const bad = [];
+    const seen = [];
 
-  for (const [sym, want] of Object.entries(COMMODITY_EXPECT)) {
-    const it = by[sym];
-    if (!it) {
-      bad.push(`${sym}:missing`);
-      continue;
+    for (const [sym, want] of Object.entries(COMMODITY_EXPECT)) {
+      const it = by[sym];
+      if (!it) {
+        bad.push(`${sym}:missing`);
+        continue;
+      }
+      const lot = Number(it.contract?.lot);
+      seen.push(`${sym} ${it.segment}/${lot}`);
+      if (!it.key) bad.push(`${sym}:no-key`);
+      else if (it.segment !== want.segment)
+        bad.push(`${sym}:segment=${it.segment}!=${want.segment}`);
+      else if (!it.isCommodity) bad.push(`${sym}:not-commodity`);
+      else if (lot !== want.lot) bad.push(`${sym}:lot=${lot}!=${want.lot}`);
     }
-    const lot = Number(it.contract?.lot);
-    seen.push(`${sym} ${it.segment}/${lot}`);
-    if (!it.key) bad.push(`${sym}:no-key`);
-    else if (it.segment !== want.segment)
-      bad.push(`${sym}:segment=${it.segment}!=${want.segment}`);
-    else if (!it.isCommodity) bad.push(`${sym}:not-commodity`);
-    else if (lot !== want.lot) bad.push(`${sym}:lot=${lot}!=${want.lot}`);
-  }
 
-  // GOLD and GOLDPETAL are different contracts; sharing a key is the exact
-  // symptom of falling back to the `name` column.
-  if (by.GOLD?.key && by.GOLD.key === by.GOLDPETAL?.key)
-    bad.push("GOLD and GOLDPETAL share a key");
-  // An equity must not inherit a commodity contract.
-  if (by.RELIANCE?.contract) bad.push("RELIANCE has a commodity contract");
+    // GOLD and GOLDPETAL are different contracts; sharing a key is the exact
+    // symptom of falling back to the `name` column.
+    if (by.GOLD?.key && by.GOLD.key === by.GOLDPETAL?.key)
+      bad.push("GOLD and GOLDPETAL share a key");
+    // An equity must not inherit a commodity contract.
+    if (by.RELIANCE?.contract) bad.push("RELIANCE has a commodity contract");
 
-  return { ok: !bad.length, info: bad.length ? bad.join(" ") : seen.join(" · ") };
-});
+    return {
+      ok: !bad.length,
+      info: bad.length ? bad.join(" ") : seen.join(" · "),
+    };
+  },
+);
 
 // ── anonymous route protection ──────────────────────────────────────────────
 // A private page must bounce a visitor to /login, not render an account-shaped
