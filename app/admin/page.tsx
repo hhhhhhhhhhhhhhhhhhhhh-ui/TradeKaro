@@ -1157,28 +1157,19 @@ export default function AdminPage() {
               </Card>
               <Card
                 title="Market hours (IST)"
-                sub="Trading session window + holidays."
+                sub="Fallback window, used only when the exchange calendar is unavailable."
               >
                 <div className="grid grid-cols-2 gap-2">
                   {text("Open HH:MM", "marketHours.open")}
                   {text("Close HH:MM", "marketHours.close")}
                 </div>
-                <CsvEdit
-                  label="Holidays YYYY-MM-DD"
-                  value={(s.marketHours.holidays || []).join(", ")}
-                  disabled={!canEdit}
-                  onSave={(v) =>
-                    save({
-                      marketHours: {
-                        ...s.marketHours,
-                        holidays: v
-                          .split(",")
-                          .map((x: string) => x.trim())
-                          .filter(Boolean),
-                      },
-                    })
-                  }
-                />
+                <Callout tone="info">
+                  Live sessions come from the exchange, per segment: NSE
+                  09:15–15:30, NFO until 15:40, MCX and NSE commodities until
+                  23:30. These two fields are only the fallback for when that
+                  feed is unreachable.
+                </Callout>
+                <ExchangeHolidays />
               </Card>
             </>
           )}
@@ -3864,5 +3855,78 @@ function ChangePassword() {
         change it here instead.
       </Callout>
     </Card>
+  );
+}
+
+// Holiday list, read-only.
+//
+// This was a hand-editable CSV until the exchange calendar replaced it. A
+// manual list is wrong in the quiet direction: an unlisted holiday let orders
+// through and let the MIS square-off fire on a day the exchange was shut. The
+// provider also knows something a flat list cannot express — holidays are
+// per-exchange, so on some dates NSE is shut while MCX trades normally.
+function ExchangeHolidays() {
+  const [rows, setRows] = useState<
+    { date: string; closed: string[]; description?: string }[] | null
+  >(null);
+
+  useEffect(() => {
+    fetch("/api/admin/public", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setRows(j.holidays || []))
+      .catch(() => setRows([]));
+  }, []);
+
+  const today = new Date(Date.now() + 5.5 * 3600_000)
+    .toISOString()
+    .slice(0, 10);
+  const upcoming = (rows || []).filter((h) => h.date >= today).slice(0, 8);
+
+  return (
+    <div className="rounded-lg border border-border bg-muted/30 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-[12px] font-semibold text-foreground">
+          Trading holidays
+        </div>
+        <Badge tone="slate">exchange calendar</Badge>
+      </div>
+      {rows === null ? (
+        <div className="mt-1.5 text-[12px] text-muted-foreground">Loading…</div>
+      ) : !rows.length ? (
+        <div className="mt-1.5 text-[12px] text-muted-foreground">
+          No calendar available — the fallback window above is in charge.
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-col gap-1">
+          {upcoming.map((h) => (
+            <div
+              key={h.date}
+              className="flex items-baseline justify-between gap-3 text-[12px]"
+            >
+              <span className="font-mono tabular-nums text-foreground/80">
+                {h.date}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-right text-muted-foreground">
+                {h.description || "—"}
+              </span>
+              <span className="shrink-0 font-mono text-[11px] text-muted-foreground/70">
+                {h.closed.length === 1
+                  ? h.closed[0]
+                  : `${h.closed.length} closed`}
+              </span>
+            </div>
+          ))}
+          {!upcoming.length ? (
+            <div className="text-[12px] text-muted-foreground">
+              None remaining this year.
+            </div>
+          ) : null}
+        </div>
+      )}
+      <div className="mt-2 text-[11px] leading-relaxed text-muted-foreground/80">
+        Read-only. Sessions and closures are fetched from the exchange daily;
+        edits here would be overwritten.
+      </div>
+    </div>
   );
 }
