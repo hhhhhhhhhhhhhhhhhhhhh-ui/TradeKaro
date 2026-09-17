@@ -439,7 +439,7 @@ export async function referencePrice(
   }
 }
 
-const TOLERANCE = { STOCK: 0.03, OPTION: 0.06 } as const;
+const TOLERANCE = { STOCK: 0.03, OPTION: 0.06, COMMODITY: 0.1 } as const;
 
 /**
  * Why an order was refused. A stable code rather than the human message, so
@@ -724,7 +724,15 @@ export async function validateFill(
     };
   }
   const dev = Math.abs(price - ref.price) / ref.price;
-  if (dev > TOLERANCE[kind]) {
+  // Commodities get far more room than a cash equity. MCX gold, silver and
+  // natural gas move several percent inside one session, and this is checked
+  // against a REST snapshot the provider itself notes can lag, so the cash-equity
+  // band rejected genuine orders as "price moved". The band exists to catch a
+  // stale or invented price, not to enforce the exchange's price bands.
+  const tol = isCommoditySegment(segment)
+    ? TOLERANCE.COMMODITY
+    : TOLERANCE[kind];
+  if (dev > tol) {
     return {
       ok: false,
       error: `Price moved (₹${price.toFixed(2)} vs live ₹${ref.price.toFixed(2)}) — refresh the ticket`,

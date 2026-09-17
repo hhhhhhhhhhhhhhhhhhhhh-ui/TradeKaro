@@ -8,6 +8,7 @@ import {
   shouldTrigger,
 } from "@/app/lib/pendingOrders";
 import { executeFill, getBackendCash, initLedgerSync } from "@/app/lib/trading";
+import { ensureInstrument } from "@/app/hooks/useInstrument";
 import { getPublicConfig } from "@/app/hooks/usePublicConfig";
 import { getApiURL } from "@/app/components/apiURL";
 import axios from "axios";
@@ -88,6 +89,12 @@ export default function TradeEngine() {
                 ? o.triggerPrice
                 : ltp;
           // Local paper engine settles the fill; backend records it.
+          //
+          // The instrument is resolved first because the segment decides which
+          // exchange's session is checked. A commodity LIMIT parked in the
+          // afternoon fills in the evening, and the default NSE check cancelled
+          // it outright instead of filling it.
+          const meta = await ensureInstrument(o.scrip);
           try {
             executeFill({
               scrip: o.scrip,
@@ -97,6 +104,7 @@ export default function TradeEngine() {
               kind: "STOCK",
               product: o.product,
               backendCash: getBackendCash(),
+              segment: meta?.segment,
             });
           } catch (e: any) {
             o.status = "CANCELLED";

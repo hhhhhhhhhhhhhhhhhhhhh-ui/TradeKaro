@@ -149,6 +149,9 @@ export default function OrderTicket(props: {
         kind: "STOCK",
         product,
         backendCash: getBackendCash(),
+        // Without this the client gate checks the NSE session and refuses every
+        // commodity order after 15:30.
+        segment: meta?.segment,
       });
     } catch (err: any) {
       sileo.error({ title: err?.message || "Order failed" });

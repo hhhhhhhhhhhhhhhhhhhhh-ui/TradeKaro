@@ -5,6 +5,7 @@ import { apiURL } from "@/app/components/apiURL";
 import axios from "axios";
 import { getCookie } from "cookies-next";
 import { executeFill, getBackendCash } from "@/app/lib/trading";
+import { ensureInstrument } from "@/app/hooks/useInstrument";
 
 // Multi-leg basket executed sequentially at live LTP.
 export default function BasketPanel(props: {
@@ -46,6 +47,9 @@ export default function BasketPanel(props: {
         /* ledger fallback below */
       }
       if (backendOk) continue;
+      // Resolve the instrument so the client session check uses the right
+      // exchange — the default is NSE, which refuses a live commodity order.
+      const meta = await ensureInstrument(r.scrip);
       try {
         executeFill({
           scrip: r.scrip,
@@ -54,6 +58,7 @@ export default function BasketPanel(props: {
           side: r.side,
           kind: "STOCK",
           backendCash: getBackendCash(),
+          segment: meta?.segment,
         });
         ok++;
       } catch (e: any) {

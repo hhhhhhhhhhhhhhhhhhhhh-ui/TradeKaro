@@ -144,6 +144,9 @@ export default function OptionTicket({
         strike: cur.strike,
         optionSide: cur.side,
         lotSize: lot,
+        // NFO closes at 15:40, ten minutes after the cash market. Without this
+        // the default NSE check refused the tail of every options session.
+        segment: "NFO",
       });
       setWallet(getWalletBalance(getBackendCash()));
       sileo.success({

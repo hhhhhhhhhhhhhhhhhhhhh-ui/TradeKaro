@@ -8,7 +8,8 @@ import { useEffect, useState } from "react";
 import { getPublicConfig, usePublicConfig } from "@/app/hooks/usePublicConfig";
 import { kycGate, type KycGate } from "./kycGate";
 import { legKey, normalizeProduct } from "./positionKeys";
-import { orderWindow } from "./marketClock";
+import { orderWindow, EQUITY_EXCHANGE, type ExchangeCode } from "./marketClock";
+import { cachedInstrument } from "@/app/hooks/useInstrument";
 
 export type InstrumentKind = "STOCK" | "OPTION";
 export type FillSide = "BUY" | "SELL";
@@ -512,14 +513,33 @@ export function executeFill(args: {
   strike?: number;
   optionSide?: "CE" | "PE";
   lotSize?: number;
+  /**
+   * Exchange this instrument trades on. Callers MUST pass it for a commodity:
+   * without it the session check below falls back to NSE and refuses every
+   * order placed after the 15:30 cash close — the whole MCX evening session.
+   */
+  segment?: ExchangeCode;
 }): { entry: TradeEntry; positions: TradePos[]; wallet: number } {
-  const rules = getPublicConfig().trading;
+  const cfg = getPublicConfig();
+  const rules = cfg.trading;
   if (rules?.haltFills) throw new Error("Fills halted by admin (kill switch)");
   // Same gate the server enforces, run first so the failure is instant and the
   // optimistic position is never applied for an order that cannot be booked.
+  //
+  // It has to be SEGMENT-AWARE. This call used to omit the segment, which
+  // defaults to NSE, so a commodity order between 15:30 and 23:30 was thrown on
+  // here — by the client — even though the ticket's own check and the server
+  // would both have accepted it. The calendar is passed for the same reason:
+  // without it this gate ignored exchange holidays and disagreed with the
+  // ledger about what was open.
+  const segment =
+    args.segment ?? cachedInstrument(args.scrip)?.segment ?? EQUITY_EXCHANGE;
   const session = orderWindow(
-    getPublicConfig().marketHours,
+    cfg.marketHours,
     rules?.allowAfterHours === true,
+    new Date(),
+    segment,
+    cfg.calendar ?? null,
   );
   if (!session.allowed) throw new Error(session.reason);
   if (rules?.maxQty && args.qty > rules.maxQty)

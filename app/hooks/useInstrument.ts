@@ -62,6 +62,33 @@ async function load(symbols: string[]): Promise<void> {
 }
 
 /**
+ * Instrument metadata already in memory, or null.
+ *
+ * Sync, for callers that cannot await: the fill engine has to decide which
+ * exchange's session to check BEFORE it books an optimistic fill.
+ */
+export function cachedInstrument(symbol: string): InstrumentMeta | null {
+  return cache.get(String(symbol || "").toUpperCase()) ?? null;
+}
+
+/**
+ * Metadata for a symbol, fetching it if it is not already known.
+ *
+ * For non-React callers — the pending-order engine and the basket executor run
+ * outside a component, so they cannot call the hook but still need the segment.
+ * Returns null rather than throwing; the caller falls back to NSE and the server
+ * gate remains the authority.
+ */
+export async function ensureInstrument(
+  symbol: string,
+): Promise<InstrumentMeta | null> {
+  const sym = String(symbol || "").toUpperCase();
+  if (!sym) return null;
+  if (!cache.has(sym)) await load([sym]).catch(() => {});
+  return cache.get(sym) ?? null;
+}
+
+/**
  * Instrument metadata for one symbol.
  *
  * `ready` is deliberately exposed: callers must not apply lot arithmetic before

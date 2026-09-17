@@ -297,6 +297,8 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
         strike: p.strike,
         optionSide: p.optionSide,
         lotSize: p.lotSize ?? 1,
+        // Options are NFO, which runs to 15:40 rather than 15:30.
+        segment: "NFO",
       });
     } else {
       recordFill(p.scrip, qty, ltp, side, { product: p.product });
