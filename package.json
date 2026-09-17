@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@vercel/analytics": "^2.0.1",
-    "autoprefixer": "^10.5.0",
+    "autoprefixer": "^10.6.0",
     "axios": "^1.16.1",
     "cookies-next": "^6.1.1",
     "lightweight-charts": "^5.2.1",
