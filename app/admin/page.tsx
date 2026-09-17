@@ -18,6 +18,7 @@ import {
   FiUsers,
 } from "react-icons/fi";
 import { money, moneySigned, num } from "@/app/lib/format";
+import { ThemeToggle } from "@/app/components/theme/ThemeToggle";
 import {
   KYC_DEPOSIT_PRESETS,
   kycGate,
@@ -670,6 +671,12 @@ export default function AdminPage() {
                 calls {stats?.upstoxCalls ?? "—"} · hits {stats?.hits ?? "—"}
               </Badge>
             </div>
+            {/* The console already inherits the app's theme tokens (see
+                admin/layout.tsx) and ThemeProvider wraps it from the root
+                layout, so the storefront's toggle works here unchanged. It
+                was simply never mounted, which meant an operator had to go
+                out to the public site to flip the theme. */}
+            <ThemeToggle />
             <div className="hidden items-center gap-2 sm:flex">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand/15 text-[13px] font-bold text-brand">
                 {(email || "?").slice(0, 1).toUpperCase()}

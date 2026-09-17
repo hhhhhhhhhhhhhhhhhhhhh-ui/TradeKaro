@@ -1003,7 +1003,7 @@ await check("auth: a signed-in session opens a protected page", async () => {
     body: JSON.stringify({ username: uname, password: "Session@1234" }),
   });
   const setCookies = log.headers.getSetCookie?.() || [];
-  const cookie = ((setCookies.join("; ").match(/token=([^;]+)/) || [])[1]) || "";
+  const cookie = (setCookies.join("; ").match(/token=([^;]+)/) || [])[1] || "";
   if (!cookie) return { ok: false, info: "login issued no token cookie" };
 
   // Every page the client may redirect to straight after signing in.
