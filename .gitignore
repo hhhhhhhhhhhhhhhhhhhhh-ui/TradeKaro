@@ -73,3 +73,15 @@ backup-manifest.json
 .env
 .env.*
 !.env.example
+
+# ---------------------------------------------------------------------------
+# TLS + DNS credentials. `*.pem` above already covers the certificates, but
+# these are named explicitly so the intent is obvious to whoever drops the
+# files in next: the Cloudflare origin private key and an API token are both
+# live credentials, and this repo is public.
+# ---------------------------------------------------------------------------
+origin-cert.pem
+origin-key.pem
+cloudflare.ini
+cf-token.txt
+cf.ini
