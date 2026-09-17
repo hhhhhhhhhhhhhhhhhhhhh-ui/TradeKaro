@@ -869,7 +869,11 @@ await check("adminpw: rotate own console password", async () => {
     // Non-mutating guard: the console must refuse to delete the account you are
     // signed in with.
     const selfDelete = await fetch(
-      BASE + "/api/admin/users?id=" + encodeURIComponent(list?.users?.find((u) => u.email === ADMIN_EMAIL)?.id || ""),
+      BASE +
+        "/api/admin/users?id=" +
+        encodeURIComponent(
+          list?.users?.find((u) => u.email === ADMIN_EMAIL)?.id || "",
+        ),
       { method: "DELETE", headers: { Cookie: "admin_token=" + cookie } },
     ).then((r) => r.status);
 
