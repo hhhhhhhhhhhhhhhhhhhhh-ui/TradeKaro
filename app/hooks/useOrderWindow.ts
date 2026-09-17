@@ -1,7 +1,11 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { usePublicConfig } from "./usePublicConfig";
-import { orderWindow, type ExchangeCode, type MarketPhase } from "@/app/lib/marketClock";
+import {
+  orderWindow,
+  type ExchangeCode,
+  type MarketPhase,
+} from "@/app/lib/marketClock";
 
 export type OrderWindowState = {
   /**

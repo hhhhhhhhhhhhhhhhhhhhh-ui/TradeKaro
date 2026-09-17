@@ -1,11 +1,7 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { upstoxGet } from "./upstox";
-import type {
-  DayCalendar,
-  ExchangeCode,
-  SessionWindow,
-} from "./marketClock";
+import type { DayCalendar, ExchangeCode, SessionWindow } from "./marketClock";
 
 // ── Exchange calendar ───────────────────────────────────────────────────────
 //
