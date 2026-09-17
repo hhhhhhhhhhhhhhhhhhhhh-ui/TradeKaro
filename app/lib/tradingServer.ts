@@ -6,13 +6,19 @@ import { depositedTotal } from "./deposits";
 import { kycGate, normalizeMinDeposit } from "./kycGate";
 import { cached } from "./marketCache";
 import {
+  EQUITY_EXCHANGE,
+  isCommoditySegment,
   istInstant,
   istMinutes,
-  marketPhase,
   orderWindow,
+  segmentClose,
+  segmentPhase,
+  shiftHhmm,
+  type DayCalendar,
+  type ExchangeCode,
 } from "./marketClock";
 import { legKey, normalizeProduct } from "./positionKeys";
-import { exchangeOfSymbol, todaySessions } from "./marketInfo";
+import { segmentOfSymbol, todaySessions } from "./marketInfo";
 import type { AdminSettings } from "./adminStore";
 import {
   hasUpstox,
@@ -449,6 +455,7 @@ export type RejectReason =
   | "symbol_missing"
   | "bad_qty"
   | "bad_price"
+  | "bad_lot"
   | "qty_cap"
   | "no_ref_price"
   | "price_moved"
@@ -509,6 +516,51 @@ export function logReject(row: {
 
 // ── Validation ─────────────────────────────────────────────────────────────
 
+/**
+ * Lot size for a commodity root, or null when the symbol is not one.
+ *
+ * Imported lazily, like `resolveUpstoxKey` does, because `instruments.ts` pulls
+ * in `node:zlib` and `node:fs` and this module is also loaded by scripts that
+ * never touch the master.
+ *
+ * A failure returns null — "not a commodity" — rather than throwing. Routing a
+ * commodity through equity rules is a bad outcome, but refusing every order
+ * because the master could not be read is a worse one.
+ */
+async function commodityContract(symbol: string) {
+  try {
+    const { commodityContract: look } = await import("./instruments");
+    return await look(symbol);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * When new intraday legs stop being accepted for a segment, `HH:MM` IST.
+ *
+ * The gate and the sweep both call this. They must agree: if the gate thinks
+ * the window is open while the sweep thinks it is closed, a customer opens a leg
+ * that is flattened on the very next pass — a phantom round trip in their
+ * tradebook and a real charge against their cash.
+ *
+ * Equities use the operator's configured time (15:15 by default, deliberately
+ * before the 15:30 close so the exit still has a market to price against).
+ * Commodities derive theirs from their OWN session end, because MCX runs to
+ * 23:30 — an inherited 15:15 would stop accepting gold at lunchtime and flatten
+ * every open leg while the market was still open.
+ */
+export function misCutoffHhmm(
+  rs: AdminSettings,
+  segment: ExchangeCode,
+  now = new Date(),
+  cal?: DayCalendar | null,
+): string {
+  if (isCommoditySegment(segment))
+    return shiftHhmm(segmentClose(rs.marketHours, now, segment, cal), -5);
+  return rs.trading?.squareOffTime || "15:15";
+}
+
 export async function validateFill(
   key: string,
   input: FillInput,
@@ -547,12 +599,17 @@ export async function validateFill(
   //
   // Segment-aware, because the exchanges do not share a session: measured live,
   // NSE runs 09:15-15:30, NFO to 15:40 and MCX/NSCOM to 23:30. One NSE window
-  // refused the last ten minutes of every options session every day.
+  // refused the last ten minutes of every options session every day — and would
+  // have refused every evening commodity order outright.
+  //
+  // Resolved through the instrument master, not from the symbol's shape: the
+  // only trustworthy answer to "is GOLD a commodity?" is the provider's own key
+  // prefix. See `segmentOfSymbol`.
   //
   // `calendar` is null whenever the provider is unreachable, and `orderWindow`
   // then falls back to the configured window exactly as it did before — an
   // outage must never look like a market closure.
-  const segment = exchangeOfSymbol(input.symbol, input.kind);
+  const segment = await segmentOfSymbol(input.symbol, input.kind);
   const calendar = await todaySessions().catch(() => null);
   const window = orderWindow(
     rs.marketHours,
@@ -600,6 +657,35 @@ export async function validateFill(
       status: 400,
       reason: "qty_cap",
     };
+
+  // Commodities trade in LOTS, never bare units. The exchange takes 100 units of
+  // silver and rejects 50, so a ledger that accepts arbitrary quantities books
+  // positions that could not exist — and every P&L figure derived from them
+  // inherits the error.
+  //
+  // Quantity stays in UNITS end to end, so the ledger, margin and valuation
+  // arithmetic is byte-for-byte the same as an equity leg; only the ticket
+  // thinks in lots and multiplies before it posts.
+  //
+  // Placed before the margin and price work so a malformed lot size fails
+  // cheaply, and it never trusts a client-supplied lot size.
+  const contract = await commodityContract(symbol);
+  if (contract && contract.lot > 0) {
+    const lot = Math.round(contract.lot);
+    if (!Number.isInteger(qty) || qty % lot !== 0) {
+      const lots = qty / lot;
+      return {
+        ok: false,
+        error:
+          `${symbol} trades in lots of ${lot} units. ` +
+          `${qty} is not a whole number of lots` +
+          (Number.isFinite(lots) ? ` (${lots.toFixed(2)})` : "") +
+          `. Nearest valid: ${Math.max(1, Math.round(lots)) * lot} units.`,
+        status: 400,
+        reason: "bad_lot",
+      };
+    }
+  }
 
   const kind: InstrumentKind = input.kind === "OPTION" ? "OPTION" : "STOCK";
   const side: FillSide = input.side === "SELL" ? "SELL" : "BUY";
@@ -655,16 +741,18 @@ export async function validateFill(
     rules.autoSquareOff !== false &&
     rules.allowAfterHours !== true
   ) {
+    const nowTs = new Date();
     const increases = side === "BUY" ? held >= 0 : held <= 0;
-    const phase = marketPhase(rs.marketHours);
+    const phase = segmentPhase(rs.marketHours, nowTs, segment, calendar);
+    const cutoffHhmm = misCutoffHhmm(rs, segment, nowTs, calendar);
     const pastCutoff =
-      istMinutes() >= hhmmToMins(rules.squareOffTime, 15 * 60 + 15);
+      istMinutes(nowTs) >= hhmmToMins(cutoffHhmm, 15 * 60 + 15);
     if (increases && pastCutoff && (phase === "LIVE" || phase === "POST"))
       return {
         ok: false,
         error:
-          `Intraday (MIS) positions are squared off at ` +
-          `${rules.squareOffTime || "15:15"} IST — too late to open a new one. ` +
+          `Intraday (MIS) positions on ${segment} are squared off at ` +
+          `${cutoffHhmm} IST — too late to open a new one. ` +
           `Use a delivery (CNC) order instead.`,
         status: 400,
         reason: "mis_window_closed",
@@ -752,31 +840,42 @@ function hhmmToMins(hhmm: string | undefined, fb: number) {
 }
 
 /**
- * Is the sweep due, and what timestamp should its fill carry?
+ * Is the sweep due for one segment, and what timestamp should its fill carry?
  *
- * The cutoff is bought forward from the admin panel (`trading.squareOffTime`,
- * default 15:15) and must land inside the session so the closing order can
- * actually be priced. When the process was not running at the cutoff we still
- * close the leg, but stamp it at the moment the session ended — never at "now" —
- * so a late sweep cannot masquerade as an after-hours trade in the tradebook.
+ * Per-segment because the exchanges close eight hours apart. A single cutoff
+ * derived from the cash-equity close flattened every commodity leg in the
+ * afternoon, while MCX was still open — so this takes the segment's own session
+ * end and its own cutoff (see `misCutoffHhmm`).
+ *
+ * The cutoff must land inside the session so the closing order can actually be
+ * priced. When the process was not running at the cutoff we still close the leg,
+ * but stamp it at the moment the session ended — never at "now" — so a late
+ * sweep cannot masquerade as an after-hours trade in the tradebook.
  */
 export function squareOffDue(
   rs: AdminSettings,
   now = new Date(),
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
 ): { due: boolean; stamp: number; why: string } {
   if (rs.trading?.autoSquareOff === false)
     return { due: false, stamp: 0, why: "auto square-off is off" };
-  const phase = marketPhase(rs.marketHours, now);
+  const phase = segmentPhase(rs.marketHours, now, segment, cal);
   if (phase === "WEEKEND" || phase === "HOLIDAY")
-    return { due: false, stamp: 0, why: `no session (${phase})` };
-  const cutoffMs = istInstant(now, rs.trading?.squareOffTime || "15:15");
-  if (now.getTime() < cutoffMs)
-    return { due: false, stamp: 0, why: "before the cutoff" };
-  const closeMs = istInstant(now, rs.marketHours?.close || "15:30");
+    return { due: false, stamp: 0, why: `${segment}: no session (${phase})` };
+  const cutoffHhmm = misCutoffHhmm(rs, segment, now, cal);
+  if (now.getTime() < istInstant(now, cutoffHhmm))
+    return { due: false, stamp: 0, why: `${segment}: before the cutoff` };
+  const closeMs = istInstant(
+    now,
+    segmentClose(rs.marketHours, now, segment, cal),
+  );
   return {
     due: true,
     stamp: Math.min(now.getTime(), closeMs),
-    why: phase === "LIVE" ? "cutoff reached" : "cutoff missed — catching up",
+    why: `${segment}: ${
+      phase === "LIVE" ? "cutoff reached" : "cutoff missed — catching up"
+    }`,
   };
 }
 
@@ -814,16 +913,45 @@ function misLegs(key: string): MisLeg[] {
 }
 
 /**
+ * The segments the sweep knows how to close.
+ *
+ * Membership here is what decides whether a leg is ever considered for
+ * square-off. Cash equity first because it is the common case and its plan is
+ * the one reported on a no-op pass.
+ */
+const SWEEP_SEGMENTS: ExchangeCode[] = [EQUITY_EXCHANGE, "MCX", "NSCOM"];
+
+/**
  * Flatten every open intraday leg. Safe to call at any frequency: it derives
  * what is actually open rather than trusting a flag, so the only way it touches
  * a position is if one is genuinely still open.
+ *
+ * Each leg is judged by its OWN exchange. MCX closes at 23:30 and the cash
+ * market at 15:30, so one shared cutoff either flattened commodities eight
+ * hours early or held equity legs open all evening.
  */
 export async function sweepMisSquareOff(
   now = new Date(),
 ): Promise<{ swept: number; unpriced: number; why: string }> {
   const rs = await runtimeSettings();
-  const plan = squareOffDue(rs, now);
-  if (!plan.due) return { swept: 0, unpriced: 0, why: plan.why };
+  const cal = await todaySessions().catch(() => null);
+  const plans = new Map<
+    ExchangeCode,
+    { due: boolean; stamp: number; why: string }
+  >();
+  const planFor = (seg: ExchangeCode) => {
+    let p = plans.get(seg);
+    if (!p) {
+      p = squareOffDue(rs, now, seg, cal);
+      plans.set(seg, p);
+    }
+    return p;
+  };
+
+  // Cheap union first: if no segment has reached its cutoff, return before
+  // touching a single price.
+  if (!SWEEP_SEGMENTS.some((s) => planFor(s).due))
+    return { swept: 0, unpriced: 0, why: planFor(EQUITY_EXCHANGE).why };
   // A maintenance freeze stops user trading; the sweep waits with it rather than
   // reaching for prices while the operator has the system held.
   if (rs.maintenance) return { swept: 0, unpriced: 0, why: "maintenance mode" };
@@ -834,11 +962,20 @@ export async function sweepMisSquareOff(
 
   let swept = 0;
   let unpriced = 0;
+  const whys: string[] = [];
 
   for (const u of users) {
     // Take the symbols first, then re-check each one individually: the price
     // fetch below is an await, and the customer can trade during it.
     for (const symbol of misLegs(u.user_id).map((l) => l.symbol)) {
+      // Which exchange this leg belongs to decides whether it is due at all, so
+      // resolve it before spending a price lookup on a leg that must stay open.
+      // Cached per user+symbol inside the loop by the plan map above.
+      const seg = await segmentOfSymbol(symbol);
+      const plan = planFor(seg);
+      if (!plan.due) continue;
+      if (!whys.includes(plan.why)) whys.push(plan.why);
+
       const ref = await referencePrice(symbol).catch(() => null);
       // No price, no exit. A silent bad fill would be worse than a stale
       // position; the next pass retries.
@@ -884,13 +1021,14 @@ export async function sweepMisSquareOff(
     }
   }
 
+  const why = whys.length ? whys.join("; ") : "nothing due";
   if (swept || unpriced)
     console.log(
       `[mis] auto square-off: ${swept} leg(s) closed` +
         (unpriced ? `, ${unpriced} could not be priced` : "") +
-        ` — ${plan.why}`,
+        ` — ${why}`,
     );
-  return { swept, unpriced, why: plan.why };
+  return { swept, unpriced, why };
 }
 
 /** How many fills exist for one user+symbol — used to key the sweep's idempotency. */
@@ -920,7 +1058,13 @@ async function runSweepIfDue(): Promise<void> {
   sweeping = true;
   try {
     const rs = await runtimeSettings();
-    if (!squareOffDue(rs).due) return;
+    const cal = await todaySessions().catch(() => null);
+    // Any segment past its cutoff is enough to justify a pass; the sweep itself
+    // then decides per leg. Testing ONLY the equity plan here would leave the
+    // timer idle all evening, so a commodity leg opened at 18:00 would never be
+    // reconsidered after the 15:15 equity cutoff had come and gone.
+    if (!SWEEP_SEGMENTS.some((s) => squareOffDue(rs, new Date(), s, cal).due))
+      return;
     lastDueSweepAt = Date.now();
     await sweepMisSquareOff();
   } catch {

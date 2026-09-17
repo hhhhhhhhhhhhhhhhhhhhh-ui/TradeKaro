@@ -133,27 +133,44 @@ export function exchangeOfInstrument(key: string): Exchange {
 }
 
 /**
- * Commodity root symbols (GOLD, SILVER, CRUDEOIL…).
+ * Which exchange a symbol trades on, from the symbol alone.
  *
- * Populated from the MCX master so this stays the single place that answers
- * "is this a commodity?" — the order gate must not grow a second list.
- */
-export const COMMODITY_SYMBOLS = new Set<string>();
-
-/**
- * Which exchange a symbol trades on.
+ * Cheap and synchronous, and deliberately a FALLBACK: it can tell an option
+ * from a cash equity, but it cannot know that GOLD is an MCX contract. Use
+ * `segmentOfSymbol` on any path that decides lot rules or session hours.
  *
- * Cheap and synchronous on purpose: this sits in the order gate, which runs on
- * every fill, and `validateFill` must not acquire I/O it does not need.
- *
- * Options are NFO, and NFO runs to 15:40 — ten minutes past the NSE cash close.
- * Treating every order as NSE therefore refused the tail of every options
- * session, every day.
+ * This used to consult a `COMMODITY_SYMBOLS` Set that was declared, exported,
+ * and never populated — so every commodity silently resolved to NSE and was
+ * gated against 15:30 instead of 23:30. A lookup table that is always empty is
+ * worse than no table, because the call site reads as if it works.
  */
 export function exchangeOfSymbol(symbol: string, kind?: string): Exchange {
-  const s = String(symbol || "").toUpperCase();
-  if (COMMODITY_SYMBOLS.has(s)) return "MCX";
   return String(kind || "").toUpperCase() === "OPTION" ? "NFO" : "NSE";
+}
+
+/**
+ * The real segment for a symbol, resolved through the instrument master.
+ *
+ * Async because it may have to load the master, and the key is the only
+ * trustworthy source: `MCX_FO|...` and `NSE_COM` are the provider's own labels,
+ * so nothing has to maintain a list of which names are commodities.
+ *
+ * Falls back to `exchangeOfSymbol` when the master is unavailable. That is the
+ * safe direction: an outage then looks like the old behaviour rather than
+ * routing a commodity order through equity lot rules.
+ */
+export async function segmentOfSymbol(
+  symbol: string,
+  kind?: string,
+): Promise<Exchange> {
+  try {
+    const { lookupInstrumentKey } = await import("./instruments");
+    const key = await lookupInstrumentKey(symbol);
+    if (key) return exchangeOfInstrument(key);
+  } catch {
+    /* master unavailable — fall through to the kind-based guess */
+  }
+  return exchangeOfSymbol(symbol, kind);
 }
 
 /**

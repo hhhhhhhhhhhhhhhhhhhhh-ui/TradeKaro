@@ -45,11 +45,23 @@ export type CommodityContract = {
 };
 
 export type InstrumentMaster = {
+  /**
+   * Shape/derivation version.
+   *
+   * Bump whenever the parsing rules change. The disk cache is trusted for a
+   * week, so without this a deployed fix would sit unused behind a cache written
+   * by the previous build — which is exactly how the `name`-column root bug
+   * would have survived its own fix in production.
+   */
+  v: number;
   at: number;
   eq: Record<string, string>; // tradingsymbol -> instrument_key
   idx: Record<string, string>;
   com: Record<string, CommodityContract>; // root name -> nearest contract
 };
+
+/** Bump on any change to how the master is derived. See `InstrumentMaster.v`. */
+const MASTER_VERSION = 4;
 
 let master: InstrumentMaster | null = null;
 let loading: Promise<InstrumentMaster> | null = null;
@@ -84,6 +96,71 @@ function splitCsvLine(line: string): string[] {
   }
   out.push(cur);
   return out;
+}
+
+/**
+ * Quoted units in one lot, for roots the master reports wrongly.
+ *
+ * MCX quotes the gold family per 10 g while the contract is a round weight, and
+ * `lot_size` does not consistently mean either the weight or the quoted units:
+ * GOLD reports 1 (a 1 kg contract), GOLDM reports 100 (a 100 g contract) and
+ * GOLDGUINEA reports 8 (an 8 g contract) — three different units in one column.
+ * So these are stated absolutely, per root, rather than derived from it.
+ *
+ * Each was checked against live quotes, which is the only way to tell. GOLDPETAL
+ * is unambiguously one gram and traded at ₹15,355:
+ *
+ *   GOLD       ₹1,53,048 / 100 units = ₹15,304.80 per 10 g   ~ ₹15,305/g  ✓
+ *   GOLDM      ₹1,54,220 /  10 units = ₹15,422.00 per 10 g   ~ ₹15,422/g  ✓
+ *   GOLDGUINEA ₹1,22,524 /   1 unit  = ₹15,315.50 per 8 g    ~ ₹15,315/g  ✓
+ *   GOLD10G    ₹1,52,246 /   1 unit  = ₹15,224.60 per 10 g   ~ ₹15,224/g  ✓
+ *
+ * All four agree with the petal's rupees-per-gram, which is what fixes the
+ * units. Taken at face value instead, one lot of GOLD would show ₹1.53 lakh of
+ * exposure when a real lot is ₹1.53 crore.
+ *
+ * Everything absent from this table already reports the right figure, because
+ * `lot_size` there IS the quoted units: SILVER 30 (30 kg, per kg), CRUDEOIL 100
+ * (100 barrels, per barrel), COPPER 2500, ZINC 5, NATURALGAS 250.
+ */
+const QUOTED_UNITS_PER_LOT: Record<string, number> = {
+  GOLD: 100, // 1 kg contract, quoted per 10 g
+  GOLDM: 10, // 100 g contract, quoted per 10 g
+  GOLDGUINEA: 1, // 8 g contract, quoted per 8 g
+  GOLD10G: 1, // 10 g contract, quoted per 10 g
+  GOLD1G: 1, // 1 g contract, quoted per gram
+  GOLDPETAL: 1, // 1 g contract, quoted per gram
+};
+
+/**
+ * The commodity root of a futures trading symbol.
+ *
+ * `SILVER10026SEPFUT` -> `SILVER100`, `GOLD27FEBFUT` -> `GOLD`. Everything before
+ * the `DDMMM` expiry and the `FUT` suffix.
+ *
+ * This exists because the master's `name` column is not a root — it merges
+ * genuinely different contracts. Both `GOLD27FEBFUT` and `GOLDPETAL26SEPFUT`
+ * carry `name = "GOLD"`, so keying on it quoted gold petal (1 gram) to anyone
+ * asking for gold, at roughly a hundredth of the price. Returns "" for anything
+ * that does not parse, which drops the row rather than inventing a root.
+ */
+export function commodityRoot(tradingsymbol: string): string {
+  const m = /^([A-Z][A-Z0-9]*?)(\d{2}[A-Z]{3})FUT$/.exec(
+    String(tradingsymbol || "").toUpperCase(),
+  );
+  return m ? m[1] : "";
+}
+
+/**
+ * Quoted units in one lot — what the ledger counts, and what the exchange prices.
+ *
+ * `lot` means "units per lot" everywhere downstream, so no caller needs to know
+ * which roots are quoted in an unusual unit.
+ */
+export function quotedUnitsFor(root: string, lotSize: number): number {
+  const override = QUOTED_UNITS_PER_LOT[root];
+  const n = Number(override ?? lotSize);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : 1;
 }
 
 async function build(): Promise<InstrumentMaster> {
@@ -121,15 +198,27 @@ async function build(): Promise<InstrumentMaster> {
       continue;
     }
     if (type === "FUTCOM") {
-      const name = (c[3] || "").toUpperCase().trim();
+      // The root is in the TRADING SYMBOL, not the `name` column.
+      //
+      // `name` groups variants that are entirely different contracts: the master
+      // labels GOLDPETAL (1 gram), GOLDM and GOLD (1 kg) all as "GOLD", and
+      // SILVER, SILVERM and SILVER100 all as "SILVER". Keying on it meant a
+      // customer asking for GOLD was silently quoted GOLD PETAL — a 1-gram
+      // contract at a hundredth of the price — and SILVER resolved to SILVER100.
+      // The trading symbol carries the real root: `GOLD27FEBFUT`, `GOLDPETAL26SEPFUT`.
+      const name = commodityRoot(sym);
       const expiry = (c[5] || "").slice(0, 10);
-      const lot = Number(c[8]);
+      const lot = quotedUnitsFor(name, Number(c[8]));
       const tick = Number(c[7]);
       if (!name || !expiry) continue;
-      // MCX is the exchange customers mean by "commodities", so it wins any
-      // name clash with NSE's commodity segment.
-      const rank = exchange.startsWith("MCX") ? 0 : 1;
       const t = Date.parse(expiry);
+      // Skip contracts that have already expired: the master still lists the
+      // front month for a while after it stops trading, and "nearest expiry"
+      // would otherwise pick a dead contract.
+      if (!Number.isFinite(t) || t < Date.now() - 864e5) continue;
+      // MCX is the exchange customers mean by "commodities", so it wins over
+      // NSE's commodity segment for the same root.
+      const rank = exchange.startsWith("MCX") ? 0 : 1;
       const prev = best[name];
       if (
         !prev ||
@@ -151,7 +240,13 @@ async function build(): Promise<InstrumentMaster> {
     com[name] = contract as CommodityContract;
   }
 
-  const out: InstrumentMaster = { at: Date.now(), eq, idx, com };
+  const out: InstrumentMaster = {
+    v: MASTER_VERSION,
+    at: Date.now(),
+    eq,
+    idx,
+    com,
+  };
   try {
     await fs.mkdir(CACHE_DIR, { recursive: true });
     await fs.writeFile(CACHE_F, JSON.stringify(out));
@@ -171,10 +266,15 @@ export async function instrumentMaster(): Promise<InstrumentMaster> {
       try {
         const raw = await fs.readFile(CACHE_F, "utf8");
         const j = JSON.parse(raw) as InstrumentMaster;
-        // `j.com` is required, so a cache written before commodities existed is
-        // treated as stale and rebuilt rather than silently serving no
-        // commodity data.
-        if (j?.at && Date.now() - j.at < MAX_AGE_MS && j.eq && j.com) {
+        // `v` gates the derivation rules and `j.com` the commodity support: a
+        // cache written before either existed is rebuilt rather than served.
+        if (
+          j?.at &&
+          j.v === MASTER_VERSION &&
+          Date.now() - j.at < MAX_AGE_MS &&
+          j.eq &&
+          j.com
+        ) {
           master = j;
           return j;
         }
@@ -199,7 +299,14 @@ export async function lookupInstrumentKey(
   const sym = String(symbol || "").toUpperCase();
   if (!sym) return null;
   const m = await instrumentMaster();
-  return m.eq[sym] ?? m.idx[sym] ?? m.com[sym]?.key ?? null;
+  // Commodities are checked FIRST, and deliberately.
+  //
+  // Exactly one root collides with an NSE ticker: SILVER, which is both the MCX
+  // contract and a silver ETF on NSE. Equity-first meant asking for SILVER
+  // returned the ETF, so the ticket showed a commodity's lot size against an
+  // ETF's price. For a commodities-aware app the contract is the stronger
+  // signal, and the ETF remains reachable through the master under its own key.
+  return m.com[sym]?.key ?? m.eq[sym] ?? m.idx[sym] ?? null;
 }
 
 /**

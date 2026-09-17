@@ -68,6 +68,71 @@ export const EXCHANGE_LABEL: Record<ExchangeCode, string> = {
   BCD: "Currency",
 };
 
+/**
+ * Normal session end for each segment, `HH:MM` IST.
+ *
+ * A fallback only — the provider calendar overrides it whenever it is
+ * available. It exists because one admin window cannot describe the real day,
+ * and the MIS square-off needs to know when a leg's OWN market closes. Squaring
+ * everything off at the cash-equity close flattened gold eight hours early.
+ *
+ * Calibrated against live `/market/timings`: NSE 15:30, NFO 15:40, MCX and
+ * NSE Commodities 23:30, currency 17:00.
+ */
+export const SEGMENT_CLOSE_FALLBACK: Record<ExchangeCode, string> = {
+  NSE: "15:30",
+  NFO: "15:40",
+  NSCOM: "23:30",
+  BSE: "15:30",
+  BFO: "15:40",
+  MCX: "23:30",
+  CDS: "17:00",
+  BCD: "17:00",
+};
+
+/** Opening bell per segment, `HH:MM` IST. Companion to the close times above. */
+export const SEGMENT_OPEN_FALLBACK: Record<ExchangeCode, string> = {
+  NSE: "09:15",
+  NFO: "09:15",
+  NSCOM: "09:00",
+  BSE: "09:15",
+  BFO: "09:15",
+  MCX: "09:00",
+  CDS: "09:00",
+  BCD: "09:00",
+};
+
+/**
+ * Session hours to use when the provider calendar is unavailable.
+ *
+ * The admin window is honoured for cash equities — that is what the two fields
+ * describe — and ONLY for those. Every other segment has its own documented
+ * hours, and applying the equity window to them is how MCX came out closed for
+ * the whole evening session, which is the only time commodities trade on their
+ * own. An unreachable provider must never look like a market closure.
+ */
+export function segmentFallbackHours(
+  cfg: MarketHours | undefined,
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+): { open: string; close: string } {
+  if (segment === EQUITY_EXCHANGE)
+    return { open: cfg?.open || "09:15", close: cfg?.close || "15:30" };
+  return {
+    open: SEGMENT_OPEN_FALLBACK[segment] ?? "09:15",
+    close: SEGMENT_CLOSE_FALLBACK[segment] ?? "15:30",
+  };
+}
+
+/**
+ * Does this segment trade the late commodities session?
+ *
+ * MCX and NSE's commodity segment share hours far outside the cash market, so
+ * they need their own cutoffs and their own lot rules.
+ */
+export function isCommoditySegment(segment: ExchangeCode): boolean {
+  return segment === "MCX" || segment === "NSCOM";
+}
+
 function toMins(hhmm: string, fb: number) {
   const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(hhmm || "");
   return m ? Number(m[1]) * 60 + Number(m[2]) : fb;
@@ -123,9 +188,14 @@ export function segmentPhase(
     }
   }
 
+  // No calendar: fall back PER SEGMENT. Using the single admin window here
+  // judged MCX against cash-equity hours, so the evening session looked shut
+  // whenever the provider was unreachable — a fallback that reads as "closed"
+  // is the one thing a fallback must never do.
   const mins = ist.getHours() * 60 + ist.getMinutes();
-  if (mins < toMins(cfg?.open || "09:15", 555)) return "PRE";
-  if (mins <= toMins(cfg?.close || "15:30", 930)) return "LIVE";
+  const hours = segmentFallbackHours(cfg, segment);
+  if (mins < toMins(hours.open, 555)) return "PRE";
+  if (mins <= toMins(hours.close, 930)) return "LIVE";
   return "POST";
 }
 
@@ -158,6 +228,59 @@ export function istMinutes(now = new Date()): number {
     now.toLocaleString("en-US", { timeZone: "Asia/Kolkata" }),
   );
   return ist.getHours() * 60 + ist.getMinutes();
+}
+
+/** IST `HH:MM` for an epoch instant. India has no DST, so this is a constant shift. */
+function istHhmm(ms: number): string {
+  const d = new Date(ms + 5.5 * 3600_000);
+  return `${String(d.getUTCHours()).padStart(2, "0")}:${String(
+    d.getUTCMinutes(),
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * `HH:MM` moved back by `mins`, wrapping at midnight.
+ *
+ * The square-off cutoff has to land INSIDE the session — an exit priced at the
+ * exact close has nothing to price against — so commodity cutoffs are derived
+ * from the session end rather than pinned to a fixed time.
+ */
+export function shiftHhmm(hhmm: string, mins: number): string {
+  const m = /^([01]?\d|2[0-3]):([0-5]\d)$/.exec(String(hhmm || ""));
+  const base = m ? Number(m[1]) * 60 + Number(m[2]) : 930;
+  const t = (((base + mins) % 1440) + 1440) % 1440;
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(
+    t % 60,
+  ).padStart(2, "0")}`;
+}
+
+/**
+ * When this segment's session ends today, as `HH:MM` IST.
+ *
+ * The provider calendar wins when we have it. Without one, the segment's own
+ * fallback — deliberately NOT the admin window, which describes cash equities
+ * and would put the MCX close at 15:30.
+ */
+export function segmentClose(
+  cfg: MarketHours | undefined,
+  now: Date,
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
+): string {
+  const s = cal?.sessions?.[segment];
+  if (s) return istHhmm(s.end);
+  return segmentFallbackHours(cfg, segment).close;
+}
+
+/** When this segment's session starts today, as `HH:MM` IST. */
+export function segmentOpen(
+  cfg: MarketHours | undefined,
+  segment: ExchangeCode = EQUITY_EXCHANGE,
+  cal?: DayCalendar | null,
+): string {
+  const s = cal?.sessions?.[segment];
+  if (s) return istHhmm(s.start);
+  return segmentFallbackHours(cfg, segment).open;
 }
 
 export function isMarketLive(
@@ -193,9 +316,15 @@ function closedReason(
   cfg: MarketHours | undefined,
   phase: MarketPhase,
   segment: ExchangeCode = EQUITY_EXCHANGE,
+  now: Date = new Date(),
+  cal?: DayCalendar | null,
 ) {
-  const open = cfg?.open || "09:15";
-  const close = cfg?.close || "15:30";
+  // The message has to name THIS segment's hours. It used to print the admin
+  // window whatever the segment was, so a refusal at 23:38 told a commodity
+  // customer the market "ended at 15:30" — true of NSE, eight hours off for MCX,
+  // and a good way to make a correct refusal look like a broken clock.
+  const open = segmentOpen(cfg, segment, cal);
+  const close = segmentClose(cfg, now, segment, cal);
   const name = EXCHANGE_LABEL[segment];
   switch (phase) {
     case "WEEKEND":
@@ -230,5 +359,9 @@ export function orderWindow(
   const phase = segmentPhase(cfg, now, segment, cal);
   if (phase === "LIVE" || allowAfterHours)
     return { allowed: true, phase, reason: "" };
-  return { allowed: false, phase, reason: closedReason(cfg, phase, segment) };
+  return {
+    allowed: false,
+    phase,
+    reason: closedReason(cfg, phase, segment, now, cal),
+  };
 }

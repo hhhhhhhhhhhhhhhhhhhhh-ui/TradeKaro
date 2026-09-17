@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getApiURL } from "@/app/components/apiURL";
 import axios from "axios";
 import { getCookie } from "cookies-next";
@@ -13,6 +13,7 @@ import {
 import { useLiveTicks } from "@/app/hooks/useLiveTicks";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
 import { useOrderWindow } from "@/app/hooks/useOrderWindow";
+import { lotOf, useInstrument } from "@/app/hooks/useInstrument";
 import { DEPTH_PICK_EVENT } from "@/app/stocks/[...symbol]/components/hooks/useOrderBook";
 import { money } from "@/app/lib/format";
 
@@ -27,8 +28,23 @@ export default function OrderTicket(props: {
 }) {
   const token = getCookie("token") as string | undefined;
   const { orderDefaults, trading: tradingRules } = usePublicConfig();
-  const session = useOrderWindow();
+  // What this symbol actually is. The ticket cannot infer any of this from the
+  // name: GOLD is an MCX contract trading in 1-unit lots to 23:30, SILVER is the
+  // same venue in 100-unit lots. Until the answer arrives the ticket behaves as
+  // an equity, which is the safe direction — it never offers a lot count it
+  // cannot back up with a real lot size, and the server gate enforces the true
+  // lot regardless.
+  const { meta } = useInstrument(props.symbol);
+  const lot = lotOf(meta);
+  const isCommodity = Boolean(meta?.isCommodity);
+  // The session follows the instrument, not the app: MCX trades until 23:30 and
+  // the cash market until 15:30, so a ticket fixed on NSE hours locked itself
+  // eight hours before the commodity bell.
+  const session = useOrderWindow(meta?.segment ?? "NSE");
   const marketClosed = !session.allowed;
+  /** Set once the customer edits the field, so a late metadata reply cannot
+   *  overwrite what they typed. */
+  const qtyTouched = useRef(false);
   const [qty, setQty] = useState(() => {
     if (typeof window === "undefined") return orderDefaults?.defaultQty || 1;
     const saved = Number(
@@ -37,6 +53,12 @@ export default function OrderTicket(props: {
     );
     return Number.isFinite(saved) && saved > 0 ? Math.floor(saved) : 1;
   });
+  // A commodity default of "10" would read as ten LOTS — a thousand units of
+  // silver, ₹2.2 lakh of exposure — so reset to one lot the moment we learn what
+  // this is, unless the customer has already typed something.
+  useEffect(() => {
+    if (isCommodity && !qtyTouched.current) setQty(1);
+  }, [isCommodity]);
   const [orderType, setOrderType] = useState<OrderType>("MARKET");
   const [product, setProduct] = useState<Product>("CNC");
   const [limitPrice, setLimitPrice] = useState(props.ltp);
@@ -55,7 +77,9 @@ export default function OrderTicket(props: {
       setLimitPrice(d.price);
       setTriggerPrice(d.price);
       if (typeof d.qty === "number") {
-        const q = d.qty;
+        // Depth quantities are in UNITS; this field counts LOTS for a commodity.
+        const q = Math.max(1, Math.round(d.qty / lot));
+        qtyTouched.current = true;
         setQty((prev) =>
           Math.max(prev, Math.min(q, tradingRules?.maxQty || 1000)),
         );
@@ -68,8 +92,13 @@ export default function OrderTicket(props: {
   const [loading, setLoading] = useState(false);
   const { ticks } = useLiveTicks([props.symbol], 3000);
   const liveLtp = ticks[props.symbol.toUpperCase()]?.ltp || props.ltp;
+  // `qty` is what the customer typed (lots, for a commodity). Everything
+  // downstream works in UNITS, so the valuation, margin and charges arithmetic
+  // is identical for a commodity and an equity — and matches the server, which
+  // only ever sees units.
+  const units = qty * lot;
   const estValue =
-    qty * (orderType === "MARKET" ? liveLtp : limitPrice || liveLtp);
+    units * (orderType === "MARKET" ? liveLtp : limitPrice || liveLtp);
   // MIS shows 5x leverage but orders block full value, so the
   // margin line is informational — the wallet check below uses estValue.
   const marginReq = estValue / (MARGIN[product] || 1);
@@ -97,7 +126,7 @@ export default function OrderTicket(props: {
     try {
       executePaperFill({
         scrip: decodeURIComponent(props.symbol),
-        qty,
+        qty: units,
         price: execPrice,
         side,
         kind: "STOCK",
@@ -118,14 +147,19 @@ export default function OrderTicket(props: {
         headers: { Authorization: "Bearer " + token },
         data: {
           scrip: decodeURIComponent(props.symbol),
-          quantity: qty,
+          quantity: units,
           price: execPrice,
         },
       }).catch(() => {});
     }
+    // A commodity is quoted in a lot count the customer recognises, but the
+    // rupee figures are always the unit maths.
+    const label = isCommodity
+      ? `${units} ${props.symbol} (${qty} lot${qty === 1 ? "" : "s"})`
+      : `${qty} ${props.symbol}`;
     sileo.success({
-      title: `${side} ${qty} ${props.symbol} @ ₹${execPrice.toFixed(2)} [${orderType}/${product}]`,
-      description: `Est. value ₹${(qty * execPrice).toFixed(0)} · Margin blocked ₹${((qty * execPrice) / (MARGIN[product] || 1)).toFixed(0)}${charges > 0 ? ` · Charges ₹${charges.toFixed(2)}` : ""}`,
+      title: `${side} ${label} @ ₹${execPrice.toFixed(2)} [${orderType}/${product}]`,
+      description: `Est. value ₹${(units * execPrice).toFixed(0)} · Margin blocked ₹${((units * execPrice) / (MARGIN[product] || 1)).toFixed(0)}${charges > 0 ? ` · Charges ₹${charges.toFixed(2)}` : ""}`,
     });
     props.onClose();
   }
@@ -141,9 +175,13 @@ export default function OrderTicket(props: {
       sileo.error({ title: "Fills halted by admin (kill switch)" });
       return;
     }
-    if (tradingRules?.maxQty && qty > tradingRules.maxQty) {
+    if (tradingRules?.maxQty && units > tradingRules.maxQty) {
       sileo.error({
-        title: `Quantity capped at ${tradingRules.maxQty} by risk rules`,
+        title: isCommodity
+          ? `Quantity capped at ${tradingRules.maxQty} units (${Math.floor(
+              tradingRules.maxQty / lot,
+            )} lots) by risk rules`
+          : `Quantity capped at ${tradingRules.maxQty} by risk rules`,
       });
       return;
     }
@@ -157,7 +195,7 @@ export default function OrderTicket(props: {
           legKey(p.scrip, p.product) ===
           legKey(decodeURIComponent(props.symbol), product),
       );
-      if (!pos || pos.qty < qty) {
+      if (!pos || pos.qty < units) {
         sileo.error({ title: "Short selling is disabled by admin" });
         return;
       }
@@ -168,7 +206,7 @@ export default function OrderTicket(props: {
         localStorage.getItem("fs_confirm_orders") !== "off");
     if (needConfirm) {
       const ok = window.confirm(
-        `${props.side} ${qty} ${decodeURIComponent(props.symbol)} @ ₹${(orderType === "MARKET" ? liveLtp : limitPrice || liveLtp).toFixed(2)}?`,
+        `${props.side} ${isCommodity ? `${qty} lot${qty === 1 ? "" : "s"} = ${units} ` : qty + " "}${decodeURIComponent(props.symbol)} @ ₹${(orderType === "MARKET" ? liveLtp : limitPrice || liveLtp).toFixed(2)}?`,
       );
       if (!ok) return;
     }
@@ -192,7 +230,7 @@ export default function OrderTicket(props: {
         addPending({
           scrip: decodeURIComponent(props.symbol),
           side: props.side,
-          qty,
+          qty: units,
           orderType,
           product,
           limitPrice: orderType === "LIMIT" ? limitPrice : undefined,
@@ -216,6 +254,7 @@ export default function OrderTicket(props: {
           {props.side} {props.symbol}
         </h1>
         <span className="text-[12.5px] tabular-nums text-muted-foreground">
+          {isCommodity ? `${meta?.segmentLabel || "MCX"} · ` : ""}
           {money(liveLtp, 2)} live
         </span>
       </div>
@@ -261,17 +300,34 @@ export default function OrderTicket(props: {
           </div>
           <div>
             <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-              Quantity
+              {isCommodity ? "Lots" : "Quantity"}
             </label>
             <input
               type="number"
               min="1"
+              step="1"
               value={qty}
-              onChange={(e) =>
-                setQty(Math.max(1, parseInt(e.target.value) || 1))
-              }
+              onChange={(e) => {
+                qtyTouched.current = true;
+                setQty(Math.max(1, parseInt(e.target.value) || 1));
+              }}
               className="min-h-[44px] w-full rounded-md border border-border px-3 py-2 font-mono text-base tabular-nums focus:outline-none focus-visible:ring-2 focus-visible:ring-brand/40 md:text-[13px]"
             />
+            {isCommodity && (
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted-foreground">
+                {qty} lot{qty === 1 ? "" : "s"} ={" "}
+                <span className="font-mono tabular-nums text-foreground/80">
+                  {units}
+                </span>{" "}
+                units · lot size{" "}
+                <span className="font-mono tabular-nums text-foreground/80">
+                  {lot}
+                </span>
+                {meta?.contract?.expiry ? (
+                  <> · expires {meta.contract.expiry}</>
+                ) : null}
+              </p>
+            )}
           </div>
           {orderType === "LIMIT" && (
             <div>
