@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isSecureRequest } from "@/app/lib/requestProto";
 import {
   audit,
   ensureBootstrapAdmin,
@@ -90,7 +91,9 @@ export async function POST(req: NextRequest) {
   res.cookies.set("admin_token", token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    // Must reflect the real scheme, not NODE_ENV. Over plain HTTP a Secure
+    // cookie is dropped by the browser and the admin console can never log in.
+    secure: isSecureRequest(req),
     path: "/",
     maxAge: 12 * 3600,
   });

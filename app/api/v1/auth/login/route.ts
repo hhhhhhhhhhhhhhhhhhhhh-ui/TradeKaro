@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { issueToken, verifyLogin } from "@/app/lib/authStore";
+import { isSecureRequest } from "@/app/lib/requestProto";
 import {
   clientIp,
   loginLockStatus,
@@ -50,7 +51,12 @@ export async function POST(req: NextRequest) {
   const week = 7 * 86400;
   // "Remember me" only controls whether the cookie survives a browser restart —
   // the JWT's own 7-day expiry is unchanged either way.
-  const base = remember === false ? { path: "/" } : { path: "/", maxAge: week };
+  // `secure` follows the real scheme: hardcoding it true would break plain-HTTP
+  // deployments, and leaving it off would send the token in the clear over TLS.
+  const base =
+    remember === false
+      ? { path: "/", secure: isSecureRequest(req) }
+      : { path: "/", maxAge: week, secure: isSecureRequest(req) };
   res.cookies.set("token", token, { ...base, sameSite: "lax" as const });
   res.cookies.set("username", user.username, base);
   res.cookies.set("email", user.email, base);
