@@ -5,6 +5,7 @@ import ChainStatsStrip from "./components/ChainStatsStrip";
 import OptionTicket, { type TicketSel } from "./components/OptionTicket";
 import SectionHeader from "@/app/dashboard/components/SectionHeader";
 import LivePnlStrip from "@/app/components/LivePnlStrip";
+import useHasSession from "@/app/hooks/useHasSession";
 import { useLiveTicks } from "@/app/hooks/useLiveTicks";
 import { lotSizeFor } from "./components/lots";
 import { getPositions } from "@/app/lib/trading";
@@ -30,6 +31,8 @@ function dte(expiry: string): string {
 }
 
 export default function OptionsPage() {
+  // The desk itself is public; only the account-shaped bits below are gated.
+  const hasSession = useHasSession();
   const [u, setU] = useState("NIFTY");
   const [sel, setSel] = useState<TicketSel>(null);
   // A contract deep link waiting for the chain to load. The search can name a
@@ -191,7 +194,7 @@ export default function OptionsPage() {
             <SectionHeader
               eyebrow="Ticket"
               count={sel ? "1 leg" : "empty"}
-              href="/portfolio"
+              href={hasSession ? "/portfolio" : undefined}
               linkLabel="POSITIONS →"
             />
             <OptionTicket

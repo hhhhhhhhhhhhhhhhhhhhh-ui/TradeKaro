@@ -1,5 +1,6 @@
 "use client";
 import { useLivePnl } from "@/app/hooks/useLivePnl";
+import useHasSession from "@/app/hooks/useHasSession";
 import { pnlSigned } from "@/app/lib/format";
 
 // Small amounts keep paise, so this strip and the positions panel never
@@ -8,11 +9,22 @@ const fmt = pnlSigned;
 
 // Demat-style strip: realized + live unrealized + total, one engine,
 // same numbers on portfolio, options desk, and positions.
+//
+// Split in two so `useLivePnl` is not mounted at all for a visitor. This strip
+// also renders on the public /options desk, where a logged-out visitor used to
+// see "P&L · LIVE · REAL +₹0.00 · 0 open · ORDERS →" — a stripped account that
+// reads like an empty one rather than a signed-out one.
 export default function LivePnlStrip({
   compact = false,
 }: {
   compact?: boolean;
 }) {
+  const hasSession = useHasSession();
+  if (!hasSession) return null;
+  return <LivePnlStripInner compact={compact} />;
+}
+
+function LivePnlStripInner({ compact = false }: { compact?: boolean }) {
   const { realized, unrealized, total, live, updatedAt, positions } =
     useLivePnl();
   const cls = (v: number) => (v >= 0 ? "text-positive" : "text-negative");

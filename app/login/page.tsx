@@ -36,11 +36,40 @@ function ErrorLine({
   );
 }
 
+// Friendly names for the `?next=` destinations the proxy sends people from,
+// so the notice can say "your portfolio" instead of a URL path.
+const NEXT_LABEL: Record<string, string> = {
+  "/dashboard": "your dashboard",
+  "/portfolio": "your portfolio",
+  "/portfolio/orders": "your orders",
+  "/positions": "your positions",
+  "/ledger": "your ledger",
+  "/watchlist": "your watchlist",
+  "/profile": "your profile",
+  "/settings": "your settings",
+  "/connect": "your account connection",
+};
+
+/**
+ * Only same-site destinations are allowed.
+ *
+ * `next` arrives in the URL, so anyone can craft `/login?next=https://evil.tld`
+ * and hand it to a user; following it after a real sign-in would make this page
+ * an open redirect. Require a single leading slash, which also rejects the
+ * protocol-relative `//evil.tld` form.
+ */
+function safeNext(raw: string | null | undefined) {
+  const v = (raw || "").trim();
+  if (!v.startsWith("/") || v.startsWith("//")) return "/dashboard";
+  return v;
+}
+
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   // Where the proxy sent them from, so signing in returns them there.
-  const next = searchParams?.get("next") || "/dashboard";
+  const requested = searchParams?.get("next") || "";
+  const next = safeNext(requested);
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -166,6 +195,12 @@ function LoginContent() {
           <p className="mt-1 text-[13px] text-muted-foreground">
             Continue to your trading account.
           </p>
+
+          {requested && (
+            <div className="mt-4 rounded-lg border border-brand/30 bg-brand/10 px-3 py-2.5 text-[12.5px] leading-relaxed text-brand">
+              Please sign in to open {NEXT_LABEL[next] || "that page"}.
+            </div>
+          )}
 
           <form
             onSubmit={loginHandler}

@@ -905,6 +905,72 @@ await check("adminpw: rotate own console password", async () => {
   }
 });
 
+// ── anonymous route protection ──────────────────────────────────────────────
+// A private page must bounce a visitor to /login, not render an account-shaped
+// shell full of zeros. This is also the only thing keeping the proxy's
+// `matcher` and its PROTECTED list in step: a path listed in PROTECTED but
+// missing from the matcher never reaches the redirect logic at all, so without
+// this check it would silently stay public.
+await check("auth: private pages redirect visitors to /login", async () => {
+  const PRIVATE = [
+    "/dashboard",
+    "/portfolio",
+    "/portfolio/orders",
+    "/positions",
+    "/ledger",
+    "/watchlist",
+    "/profile",
+    "/profile/security",
+    "/profile/kyc",
+    "/profile/banks",
+    "/settings",
+    "/connect",
+  ];
+  // The shop window. Locking any of these would hide the product from
+  // visitors and from search engines, so they are asserted to stay open.
+  const PUBLIC = [
+    "/",
+    "/stocks",
+    "/options",
+    "/screener",
+    "/topmovers",
+    "/login",
+    "/signup",
+    "/terms",
+  ];
+
+  const probe = async (p) => {
+    const r = await fetch(BASE + p, { redirect: "manual" });
+    return { status: r.status, to: r.headers.get("location") || "" };
+  };
+
+  const leaks = [];
+  for (const p of PRIVATE) {
+    const r = await probe(p);
+    const bounced =
+      r.status >= 300 && r.status < 400 && r.to.includes("/login");
+    // The destination must travel with the redirect, or a visitor who signs in
+    // lands on the dashboard instead of the page they asked for.
+    if (!bounced || !r.to.includes("next="))
+      leaks.push(`${p}->${r.status}${r.to ? `:${r.to}` : ""}`);
+  }
+
+  const broken = [];
+  for (const p of PUBLIC) {
+    const r = await probe(p);
+    if (r.status !== 200) broken.push(`${p}->${r.status}`);
+  }
+
+  return {
+    ok: !leaks.length && !broken.length,
+    info: leaks.length
+      ? `NOT PROTECTED: ${leaks.join(", ")}`
+      : broken.length
+        ? `public page not 200: ${broken.join(", ")}`
+        : `${PRIVATE.length} private bounced, ${PUBLIC.length} public open`,
+  };
+});
+
 console.log("\n─── smoke results ───");
 for (const line of results) console.log(line);
 console.log(`\n${results.length - failed}/${results.length} passed`);

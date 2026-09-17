@@ -77,14 +77,24 @@ const NavbarMobile = (props: any) => {
           </button>
           <ThemeToggle />
           {!logStatus && (
-            <NavTransition href="/signup" className="flex">
-              <button
-                type="button"
-                className="flex h-[34px] items-center justify-center rounded-md border border-foreground bg-foreground px-3 text-[12px] font-semibold text-background transition hover:bg-foreground/90"
-              >
-                SIGN UP
-              </button>
-            </NavTransition>
+            <>
+              <NavTransition href="/login" className="flex">
+                <button
+                  type="button"
+                  className="flex h-[34px] items-center justify-center rounded-md border border-border px-3 text-[12px] font-semibold text-foreground/80 transition hover:bg-muted"
+                >
+                  LOGIN
+                </button>
+              </NavTransition>
+              <NavTransition href="/signup" className="hidden sm:flex">
+                <button
+                  type="button"
+                  className="flex h-[34px] items-center justify-center rounded-md border border-foreground bg-foreground px-3 text-[12px] font-semibold text-background transition hover:bg-foreground/90"
+                >
+                  SIGN UP
+                </button>
+              </NavTransition>
+            </>
           )}
           {logStatus && <Hamburger />}
         </div>

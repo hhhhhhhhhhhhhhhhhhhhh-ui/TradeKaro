@@ -2,20 +2,39 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
+import useHasSession from "@/app/hooks/useHasSession";
 import {
   FiStar,
   FiClipboard,
   FiBriefcase,
   FiTrendingUp,
   FiUser,
+  FiActivity,
+  FiFilter,
+  FiBarChart2,
+  FiLogIn,
 } from "react-icons/fi";
 
-const TABS = [
+// Signed-in dock: the account surfaces a trader jumps between all day.
+const AUTH_TABS = [
   { href: "/watchlist", label: "LIST", Icon: FiStar },
   { href: "/portfolio/orders", label: "ORDERS", Icon: FiClipboard },
   { href: "/positions", label: "POSITION", Icon: FiBriefcase, hero: true },
   { href: "/options", label: "OPTS", Icon: FiTrendingUp },
   { href: "/profile", label: "PROFILE", Icon: FiUser },
+];
+
+// Visitor dock. Four of the five signed-in tabs are account pages that would
+// only bounce off the proxy, so they are swapped for the public market pages
+// and the one action a visitor actually needs. Both lists must stay at five
+// entries: the grid is a fixed grid-cols-5 and a dynamic class name would not
+// survive Tailwind's build-time scan.
+const GUEST_TABS = [
+  { href: "/stocks", label: "STOCKS", Icon: FiTrendingUp },
+  { href: "/screener", label: "SCREEN", Icon: FiFilter },
+  { href: "/topmovers", label: "MOVERS", Icon: FiBarChart2 },
+  { href: "/options", label: "OPTS", Icon: FiActivity },
+  { href: "/login", label: "LOGIN", Icon: FiLogIn, hero: true },
 ];
 
 function isActiveTab(path: string, href: string) {
@@ -25,6 +44,8 @@ function isActiveTab(path: string, href: string) {
 // Floating broker dock: thumb-sized targets, hero FOLIO key, live glow.
 export default function MobileBottomNav() {
   const path = usePathname();
+  const hasSession = useHasSession();
+  const TABS = hasSession ? AUTH_TABS : GUEST_TABS;
   const [pendingCount, setPendingCount] = useState(0);
   useEffect(() => {
     try {

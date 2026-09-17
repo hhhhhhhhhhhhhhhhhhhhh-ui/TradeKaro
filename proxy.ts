@@ -87,34 +87,86 @@ async function sessionOk(token: string | undefined): Promise<boolean> {
 // made the whole app feel slow. Token *validity* is checked client-side and by
 // the APIs themselves (they answer 401); here we only need to know whether a
 // session cookie is present.
+//
+// ── What is public ──────────────────────────────────────────────────────────
+// The market pages (/stocks, /options, /screener, /topmovers) stay open on
+// purpose: they are the shop window, they are crawlable, and none of them read
+// account data. Everything below them needs a session.
+//
+// Without this the private pages rendered for anonymous visitors as a real-
+// looking account full of zeros (₹0 portfolio, "Holdings · 0"), because each
+// page is a client shell that just fires API calls and swallows the 401. The
+// data was never exposed — the API always refused — but a visitor could not
+// tell a locked page from an empty account.
+//
+// IMPORTANT: keep this list in step with `config.matcher`. A protected path
+// missing from the matcher never reaches this function at all, so the smoke
+// suite asserts that each of these redirects an anonymous request to /login.
+const PROTECTED = [
+  "/dashboard",
+  "/portfolio",
+  "/positions",
+  "/ledger",
+  "/watchlist",
+  "/profile",
+  "/settings",
+  "/connect",
+];
+
+function isProtected(pathname: string) {
+  return PROTECTED.some((p) => pathname === p || pathname.startsWith(p + "/"));
+}
+
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get("token")?.value;
+  const ok = await sessionOk(token);
 
-  if (pathname === "/dashboard" || pathname === "/login") {
-    const ok = await sessionOk(token);
-    if (!ok) {
-      // No usable session → the only page that helps is the login screen.
-      // Carry the destination so signing in returns them where they were going.
-      return pathname === "/login"
-        ? undefined
-        : Response.redirect(
-            new URL(`/login?next=${encodeURIComponent(pathname)}`, request.url),
-          );
-    }
-    // Valid session → keep them on the dashboard, never on the login screen.
-    return pathname === "/login"
+  // The login screen is the one page a signed-in visitor should never sit on.
+  if (pathname === "/login") {
+    return ok
       ? Response.redirect(new URL("/dashboard", request.url))
       : undefined;
   }
 
-  if (pathname === "/" && (await sessionOk(token))) {
+  if (isProtected(pathname)) {
+    if (ok) return undefined;
+    // Carry the destination — query string included — so signing in returns
+    // them to the exact page and filters they asked for.
+    const back = pathname + (request.nextUrl.search || "");
+    return Response.redirect(
+      new URL(`/login?next=${encodeURIComponent(back)}`, request.url),
+    );
+  }
+
+  // The landing page is public, but a signed-in visitor gets their dashboard.
+  if (pathname === "/" && ok) {
     return Response.redirect(new URL("/dashboard", request.url));
   }
 }
 
 export const config = {
-  // Only the routes that actually redirect. `/portfolio` was listed but had no
-  // logic behind it, so it just cost an extra Edge invocation per navigation.
-  matcher: ["/", "/dashboard", "/login"],
+  // Only the routes that actually redirect, so public pages pay nothing.
+  // `/admin` is deliberately absent: the console has its own cookie and its
+  // own guards, and bouncing it to the trading login would lock operators out.
+  matcher: [
+    "/",
+    "/login",
+    "/dashboard",
+    "/dashboard/:path*",
+    "/portfolio",
+    "/portfolio/:path*",
+    "/positions",
+    "/positions/:path*",
+    "/ledger",
+    "/ledger/:path*",
+    "/watchlist",
+    "/watchlist/:path*",
+    "/profile",
+    "/profile/:path*",
+    "/settings",
+    "/settings/:path*",
+    "/connect",
+    "/connect/:path*",
+  ],
 };

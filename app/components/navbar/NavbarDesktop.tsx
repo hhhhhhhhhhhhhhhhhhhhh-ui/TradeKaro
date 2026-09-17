@@ -15,15 +15,18 @@ import { isMarketLive, marketStatusLabel } from "@/app/lib/marketClock";
 import axios from "axios";
 import { apiURL } from "@/app/components/apiURL";
 
+// `auth: true` links are removed from the bar for visitors. They would only
+// bounce off the proxy into /login, and showing them advertises pages a
+// logged-out visitor has no business navigating to.
 const NAV_LINKS = [
-  { label: "Dashboard", href: "/dashboard" },
+  { label: "Dashboard", href: "/dashboard", auth: true },
   { label: "Stocks", href: "/stocks" },
   { label: "Options", href: "/options" },
   { label: "Screener", href: "/screener" },
-  { label: "Positions", href: "/positions" },
-  { label: "Watchlist", href: "/watchlist" },
+  { label: "Positions", href: "/positions", auth: true },
+  { label: "Watchlist", href: "/watchlist", auth: true },
   { label: "Top Movers", href: "/topmovers" },
-  { label: "Profile", href: "/profile" },
+  { label: "Profile", href: "/profile", auth: true },
 ];
 
 const RECENT_KEY = "fs_recent_searches";
@@ -246,14 +249,24 @@ export default function NavbarDesktop(props: any) {
             <ThemeToggle />
             <DensityToggle />
             {!logStatus && (
-              <NavTransition href="/signup" className="flex">
-                <button
-                  type="button"
-                  className="flex h-[34px] items-center justify-center rounded-md border border-foreground bg-foreground px-4 text-[12px] font-semibold text-background transition hover:bg-foreground/90"
-                >
-                  SIGN UP
-                </button>
-              </NavTransition>
+              <>
+                <NavTransition href="/login" className="flex">
+                  <button
+                    type="button"
+                    className="flex h-[34px] items-center justify-center rounded-md border border-border px-4 text-[12px] font-semibold text-foreground/80 transition hover:bg-muted"
+                  >
+                    LOGIN
+                  </button>
+                </NavTransition>
+                <NavTransition href="/signup" className="flex">
+                  <button
+                    type="button"
+                    className="flex h-[34px] items-center justify-center rounded-md border border-foreground bg-foreground px-4 text-[12px] font-semibold text-background transition hover:bg-foreground/90"
+                  >
+                    SIGN UP
+                  </button>
+                </NavTransition>
+              </>
             )}
             {logStatus && (
               <div ref={avatarRef} className="relative">
@@ -301,7 +314,7 @@ export default function NavbarDesktop(props: any) {
           className="flex items-center gap-1 overflow-x-auto pb-2 -mb-px"
           aria-label="Primary"
         >
-          {NAV_LINKS.map((l) => {
+          {NAV_LINKS.filter((l) => !l.auth || logStatus).map((l) => {
             const active =
               pathname === l.href ||
               (l.href !== "/" && pathname?.startsWith(l.href));
