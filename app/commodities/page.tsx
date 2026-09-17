@@ -49,9 +49,22 @@ export default function CommoditiesPage() {
           }
           return;
         }
-        const q = await axios.post("/api/market/quote", { symbols });
+        // Ten at a time. The quote endpoint caps a request at ten symbols (and so
+        // does the provider's batch call), and it drops the rest SILENTLY rather
+        // than erroring — so asking for all 33 in one go rendered a ladder of the
+        // first eight alphabetically, with GOLD missing and nothing to say why.
+        const CHUNK = 10;
+        const chunks: string[][] = [];
+        for (let i = 0; i < symbols.length; i += CHUNK)
+          chunks.push(symbols.slice(i, i + CHUNK));
+        const responses = await Promise.all(
+          chunks.map((c) =>
+            axios.post("/api/market/quote", { symbols: c }).catch(() => null),
+          ),
+        );
         const px: Record<string, number> = {};
-        for (const t of q.data?.ticks || []) px[t.symbol] = Number(t.ltp);
+        for (const resp of responses)
+          for (const t of resp?.data?.ticks || []) px[t.symbol] = Number(t.ltp);
         const built: Row[] = items
           .filter((i) => i.contract && Number(px[i.symbol]) > 0)
           .map((i) => ({

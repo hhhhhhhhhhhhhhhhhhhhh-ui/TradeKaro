@@ -1067,6 +1067,116 @@ await check(
   },
 );
 
+// ── commodity contracts carry a usable lot, tick and expiry ─────────────────
+// Lot sizes are asserted above; this covers the fields the UI consumes. The tick
+// in particular is what the ticket's price stepper uses — a zero or a missing
+// tick falls back to a 5-paise step, which lets a customer pick a price the
+// exchange does not have, on the contract where the error is largest.
+await check(
+  "market: commodity contracts carry lot, tick and expiry",
+  async () => {
+    const r = await get(
+      "/api/market/instrument?symbols=GOLD,SILVER,CRUDEOIL,COPPER,ZINC",
+    );
+    const items = r.json?.items || [];
+    const bad = [];
+    const seen = [];
+    for (const i of items) {
+      const lot = Number(i.contract?.lot);
+      const tick = Number(i.contract?.tick);
+      const exp = String(i.contract?.expiry || "");
+      if (!(lot > 0)) bad.push(`${i.symbol}:lot=${i.contract?.lot}`);
+      if (!(tick > 0)) bad.push(`${i.symbol}:tick=${i.contract?.tick}`);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(exp))
+        bad.push(`${i.symbol}:expiry=${exp || "none"}`);
+      if (lot > 0 && tick > 0) seen.push(`${i.symbol} lot${lot}/tick${tick}`);
+    }
+    if (items.length < 5) bad.push(`only ${items.length} of 5 resolved`);
+    return {
+      ok: !bad.length,
+      info: bad.length ? bad.join(" ") : seen.join(" · "),
+    };
+  },
+);
+
+// ── commodities reach the market-survey surfaces ────────────────────────────
+// The mover universe is a hardcoded equity table, which is exactly the shape of
+// thing that left commodities out of every survey surface. The commodity group
+// is computed from the instrument master instead.
+await check("market: commodities appear in movers", async () => {
+  const r = await post("/api/v1/topmovers", { size: 6 });
+  const items = r.json?.TOP_COMMODITIES?.items || [];
+  const priced = items.filter((i) => Number(i.ltp) > 0);
+  if (!priced.length)
+    return {
+      ok: false,
+      info: `no priced commodity movers (status ${r.status})`,
+    };
+  // Ranked by ABSOLUTE change, so one list carries both directions.
+  const sorted = priced.every(
+    (i, n) =>
+      n === 0 ||
+      Math.abs(Number(priced[n - 1].dayChangePerc)) >=
+        Math.abs(Number(i.dayChangePerc)) - 1e-9,
+  );
+  return {
+    ok: sorted,
+    info: sorted
+      ? `${priced.length} contracts · top ${priced[0].symbol} ${Number(
+          priced[0].dayChangePerc,
+        ).toFixed(2)}%`
+      : "not ranked by absolute change",
+  };
+});
+
+// ── news ────────────────────────────────────────────────────────────────────
+// Two parsing traps live here and both fail quietly: the payload is keyed by
+// instrument rather than being a list (reading it as one yields an empty feed
+// that looks exactly like a quiet news day), and `published_time` is a NUMBER,
+// on which Date.parse returns NaN — which silently strips every date and makes
+// the feed unsortable.
+await check(
+  "news: feed serves articles, each with a parseable date",
+  async () => {
+    const r = await get("/api/v1/announcements");
+    const a = r.json?.articles || [];
+    if (!a.length)
+      return {
+        ok: false,
+        info: `source=${r.json?.source} reason=${String(r.json?.reason || "").slice(0, 120)}`,
+      };
+    const undated = a.filter(
+      (x) => !x.date || Number.isNaN(Date.parse(x.date)),
+    );
+    const unlinked = a.filter((x) => !x.url);
+    return {
+      ok: !undated.length && !unlinked.length,
+      info: undated.length
+        ? `${undated.length}/${a.length} articles lost their date`
+        : unlinked.length
+          ? `${unlinked.length}/${a.length} articles have no link`
+          : `${a.length} articles, all dated and linked`,
+    };
+  },
+);
+
+// ── instrument master health ────────────────────────────────────────────────
+// Warm it first. /api/market/stats reports `loaded:false` until a load has been
+// triggered in that bundle, which is benign — asserting on a cold bundle would
+// be a false alarm, which is the trap this check exists to avoid repeating.
+await check("market: instrument master carries commodities", async () => {
+  await post("/api/market/quote", { symbols: ["GOLD", "NIFTY"] });
+  const r = await get("/api/market/stats");
+  const m = r.json?.instruments || {};
+  const eq = Number(m.eq || 0);
+  const idx = Number(m.idx || 0);
+  const com = Number(m.com || 0);
+  return {
+    ok: eq > 1000 && idx > 50 && com > 10,
+    info: `eq=${eq} idx=${idx} com=${com} loaded=${m.loaded}${m.error ? ` error=${String(m.error).slice(0, 80)}` : ""}`,
+  };
+});
+
 // ── anonymous route protection ──────────────────────────────────────────────
 // A private page must bounce a visitor to /login, not render an account-shaped
 // shell full of zeros. This is also the only thing keeping the proxy's
@@ -1096,6 +1206,8 @@ await check("auth: private pages redirect visitors to /login", async () => {
     "/options",
     "/screener",
     "/topmovers",
+    "/commodities",
+    "/news",
     "/login",
     "/signup",
     "/terms",
