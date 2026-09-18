@@ -32,9 +32,7 @@ function isWeekend(dateStr) {
 /** True when the calendar legitimately has nothing to run today. */
 function marketClosed(cal) {
   return (
-    !!cal &&
-    isWeekend(cal.date) &&
-    Object.keys(cal.sessions || {}).length === 0
+    !!cal && isWeekend(cal.date) && Object.keys(cal.sessions || {}).length === 0
   );
 }
 
