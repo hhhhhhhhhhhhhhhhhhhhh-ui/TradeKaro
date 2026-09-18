@@ -500,21 +500,13 @@ export default function FinanceSection({
               {field("payoutApiKey", "Payout API key", true)}
               {field("payoutApiSecret", "Payout API secret", true)}
             </div>
-            <Field label="Webhook secret (signs callbacks — not the pay-in secret)">
-              <input
-                disabled={!canEdit || !superadmin}
-                value={String(draft.webhookSecret ?? pay.webhookSecret ?? "")}
-                onChange={(e) =>
-                  setDraft((v) => ({ ...v, webhookSecret: e.target.value }))
-                }
-                placeholder={
-                  pay.webhookSecret
-                    ? "•••• (leave blank to keep)"
-                    : "From Merchant info → Webhook secret"
-                }
-                className={inputCls}
-              />
-            </Field>
+            {/* ⚠️ This MUST go through `field()`, not a hand-written input.
+                A bespoke input here only updated local state and never called
+                savePay, so the secret appeared to save and then vanished on the
+                next load — the page reloads every 30s, so it vanished on its own
+                without the operator even refreshing. `field()` carries the
+                blur-save, the mask handling and the superadmin gate with it. */}
+            {field("webhookSecret", "Webhook secret (signs callbacks — not the pay-in secret)", true)}
             <Callout tone="info">
               This is the <strong>third</strong> secret and the only one that
               verifies an incoming callback. The merchant dashboard lists it
