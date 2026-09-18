@@ -9,7 +9,10 @@ import {
   gatewayBalance,
   paymentsStatus,
   payoutsFor,
+  recentOrders,
+  recentPayouts,
   recentWebhooks,
+  reconciliation,
   startPayout,
 } from "@/app/lib/payments";
 import { adminFrom, deny, needAdmin } from "../_guard";
@@ -56,6 +59,11 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     status,
     counts: counts(),
+    // The whole book, so the Finance page can be the single place everything
+    // about money is observed rather than one customer at a time.
+    orders: recentOrders(100),
+    payouts: recentPayouts(100),
+    recon: reconciliation(),
     webhooks: recentWebhooks(60),
     balance: bal && bal.ok ? bal.data : null,
     balanceError: bal && !bal.ok ? bal.error : null,

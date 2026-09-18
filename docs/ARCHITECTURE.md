@@ -239,18 +239,18 @@ Webhook URLs to register in their dashboard:
 - `POST /api/payments/webhook/payout`
 
 ⚠️ **The signature is over the exact bytes.** `await req.text()` first and verify
-*that* string — `await req.json()` consumes the body and no signature can ever
+_that_ string — `await req.json()` consumes the body and no signature can ever
 match afterwards. It fails as "every callback rejected", which points nowhere
 near the cause.
 
 ⚠️ **Nothing a callback says becomes money.** The amount credited is the one on
-*our* `payment_orders` row, never `evt.amount`; a mismatch is recorded as
-`amount_mismatch` and credits nothing. The callback only says *which order*
+_our_ `payment_orders` row, never `evt.amount`; a mismatch is recorded as
+`amount_mismatch` and credits nothing. The callback only says _which order_
 succeeded.
 
 Duplicates are the normal case — at-least-once delivery with up to 200 retries —
 so idempotency is enforced twice on purpose: the unique index on
-`payment_webhooks(txn_id, status)`, where the INSERT *is* the dedupe and losing
+`payment_webhooks(txn_id, status)`, where the INSERT _is_ the dedupe and losing
 the race is the duplicate signal, plus `recordDeposit`'s `idem` key derived from
 the same txn id. A webhook row records the outcome it finally reached
 (`credited`, `unknown_order`, `amount_mismatch`, …), never a hopeful `received`.
@@ -266,8 +266,8 @@ and treats a masked value as "unchanged" — there is deliberately no way to bla
 one from the form.
 
 ⚠️ **The platform currently tells customers the opposite.** The footer and
-`/terms` say *"no real funds are held or moved"* and *"not registered with
-SEBI"*. Enabling this makes both statements untrue, so the terms have to change
+`/terms` say _"no real funds are held or moved"_ and _"not registered with
+SEBI"_. Enabling this makes both statements untrue, so the terms have to change
 and the regulatory question has to be answered first. The code ships off for that
 reason, not for want of working.
 

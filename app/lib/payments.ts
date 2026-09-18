@@ -693,6 +693,69 @@ export function recentWebhooks(limit = 100) {
     .all(limit) as any[];
 }
 
+/** Every pay-in order, newest first — the whole book, not one customer's. */
+export function recentOrders(limit = 100) {
+  return db
+    .prepare(
+      `SELECT order_id, user_id, amount, currency, method, status, txn_id,
+              utr, created_at, updated_at
+         FROM payment_orders ORDER BY created_at DESC LIMIT ?`,
+    )
+    .all(limit) as PaymentOrder[];
+}
+
+/** Every payout, newest first. */
+export function recentPayouts(limit = 100): PayoutRow[] {
+  return db
+    .prepare(`SELECT * FROM payment_payouts ORDER BY created_at DESC LIMIT ?`)
+    .all(limit) as PayoutRow[];
+}
+
+/**
+ * Money in and out, as our own ledger and order book tell it.
+ *
+ * `credited` is what actually reached customer balances, which is the number to
+ * compare against the gateway's own balance — the two should agree once
+ * settlement clears, and a gap is the thing an operator needs to see.
+ */
+export function reconciliation() {
+  const credited = db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
+         FROM trade_deposits WHERE method = 'gateway'`,
+    )
+    .get() as { n: number; total: number };
+  const paidOut = db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
+         FROM payment_payouts WHERE status = 'success'`,
+    )
+    .get() as { n: number; total: number };
+  const pending = db
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(amount), 0) AS total
+         FROM payment_orders
+        WHERE status IN ('new','pending','processing','failed','amount_mismatch')`,
+    )
+    .get() as { n: number; total: number };
+  const unactionable = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM payment_webhooks
+        WHERE outcome IN ('bad_signature','unknown_order','unknown_payout',
+                          'amount_mismatch','credit_refused')`,
+    )
+    .get() as { n: number };
+  return {
+    creditedCount: Number(credited?.n) || 0,
+    creditedTotal: Number(credited?.total) || 0,
+    paidOutCount: Number(paidOut?.n) || 0,
+    paidOutTotal: Number(paidOut?.total) || 0,
+    openCount: Number(pending?.n) || 0,
+    openTotal: Number(pending?.total) || 0,
+    unactionableCallbacks: Number(unactionable?.n) || 0,
+  };
+}
+
 /** Merchant balance at the gateway — the reconciliation figure. */
 export async function gatewayBalance(cfg: SunpayConfig) {
   return merchantBalance(cfg, "INR");
