@@ -85,3 +85,6 @@ origin-key.pem
 cloudflare.ini
 cf-token.txt
 cf.ini
+
+# Throwaway scripts (probes, commit-message files) - never committed
+scripts/tmp-*

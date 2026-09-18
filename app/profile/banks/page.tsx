@@ -33,28 +33,62 @@ export type UpiId = {
   addedAt: number;
 };
 
+// ── These used to live in localStorage ──────────────────
+//
+// They are server-side now, and it is not a preference: a withdrawal has to be
+// paid to an account the SERVER holds, because a beneficiary supplied by the
+// browser at payout time is exactly the field an attacker would want to control.
+// The device copy is promoted once (see the import below) so nobody opens this
+// page and finds their bank details gone.
 const BANK_KEY = "fs_bank_accounts";
 const UPI_KEY = "fs_upi_ids";
 
-export function getBanks(): BankAccount[] {
+/** The server's shape, as the API returns it. */
+type ServerAccount = {
+  id: string;
+  kind: "upi" | "bank";
+  label: string | null;
+  holderName: string | null;
+  upiId: string | null;
+  accountNumberTail: string | null;
+  ifsc: string | null;
+  bankName: string | null;
+  isDefault: boolean;
+  description: string;
+};
+
+/** Old device lists, before they were promoted. Read once, then dropped. */
+function legacyDeviceAccounts(): any[] {
   try {
-    return JSON.parse(localStorage.getItem(BANK_KEY) || "[]");
+    const banks = JSON.parse(localStorage.getItem(BANK_KEY) || "[]");
+    const upis = JSON.parse(localStorage.getItem(UPI_KEY) || "[]");
+    return [
+      ...(Array.isArray(banks) ? banks : []).map((b: any) => ({
+        ...b,
+        kind: "bank",
+      })),
+      ...(Array.isArray(upis) ? upis : []).map((u: any) => ({
+        kind: "upi",
+        upiId: u?.vpa || u?.upiId,
+        label: null,
+      })),
+    ];
   } catch {
     return [];
   }
 }
 
-export function getUpis(): UpiId[] {
-  try {
-    return JSON.parse(localStorage.getItem(UPI_KEY) || "[]");
-  } catch {
-    return [];
-  }
+async function apiList(): Promise<ServerAccount[]> {
+  const r = await fetch("/api/payout-accounts", { cache: "no-store" });
+  if (!r.ok) return [];
+  const j = await r.json().catch(() => ({}));
+  return Array.isArray(j?.accounts) ? j.accounts : [];
 }
 
 function maskAcct(n: string) {
-  const d = n.replace(/\D/g, "");
-  if (d.length <= 4) return "••••";
+  const d = String(n || "").replace(/\D/g, "");
+  // The server sends only the last four, so a short value is already the tail.
+  if (d.length <= 4) return d ? `•••• ${d}` : "••••";
   return `•••• •••• ${d.slice(-4)}`;
 }
 
@@ -76,33 +110,125 @@ export default function BanksPage() {
   const [upi, setUpi] = useState("");
 
   useEffect(() => {
-    try {
-      setBanks(getBanks());
-      setUpis(getUpis());
-    } catch {
-      /* ignore */
-    }
+    let alive = true;
+    (async () => {
+      // Promote the device list first, so the very first server read already
+      // includes accounts the customer added before this change. The server
+      // ignores the call once the account has any entries of its own.
+      const legacy = legacyDeviceAccounts();
+      if (legacy.length) {
+        await fetch("/api/payout-accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "import", accounts: legacy }),
+        }).catch(() => null);
+        try {
+          localStorage.removeItem(BANK_KEY);
+          localStorage.removeItem(UPI_KEY);
+        } catch {
+          /* nothing to clean */
+        }
+      }
+      const rows = await apiList();
+      if (!alive) return;
+      apply(rows);
+    })();
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function persistBanks(next: BankAccount[]) {
-    setBanks(next);
-    try {
-      localStorage.setItem(BANK_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
+  /** Server rows → the two lists this page already renders. */
+  function apply(rows: ServerAccount[]) {
+    setBanks(
+      rows
+        .filter((r) => r.kind === "bank")
+        .map((r) => ({
+          id: r.id,
+          label: r.label || r.bankName || "Bank account",
+          holder: r.holderName || "",
+          bank: r.bankName || "",
+          accountNo: r.accountNumberTail || "",
+          ifsc: r.ifsc || "",
+          primary: r.isDefault === true,
+          // The provider verifies the account on the first payout, not here —
+          // claiming otherwise would be a lie told for decoration.
+          verified: false,
+          addedAt: 0,
+        })),
+    );
+    setUpis(
+      rows
+        .filter((r) => r.kind === "upi")
+        .map((r) => ({
+          id: r.id,
+          vpa: r.upiId || "",
+          primary: r.isDefault === true,
+          addedAt: 0,
+        })),
+    );
+  }
+
+  async function refresh() {
+    apply(await apiList());
+  }
+
+  async function addServer(body: Record<string, unknown>, ok: string) {
+    const r = await fetch("/api/payout-accounts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      sileo.error({ title: j?.error || "Could not save that account" });
+      return false;
     }
+    apply(Array.isArray(j?.accounts) ? j.accounts : []);
+    sileo.success({ title: ok });
+    return true;
+  }
+
+  async function removeServer(id: string) {
+    const r = await fetch(`/api/payout-accounts?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      sileo.error({ title: j?.error || "Could not remove that account" });
+      return;
+    }
+    apply(Array.isArray(j?.accounts) ? j.accounts : []);
+  }
+
+  /**
+   * Kept for the existing handlers below.
+   *
+   * The page was written against "save this whole list", which no longer means
+   * anything once the server owns it — so the delta is worked out here: ids that
+   * vanished are deleted, and a changed primary is promoted. Three call sites
+   * keep working, and none of them had to learn about the API.
+   */
+  function persistBanks(next: BankAccount[]) {
+    const keep = new Set([...next.map((b) => b.id), ...upis.map((u) => u.id)]);
+    const current = [...banks.map((b) => b.id), ...upis.map((u) => u.id)];
+    for (const id of current) if (!keep.has(id)) void removeServer(id);
+    const prim = next.find((b) => b.primary);
+    if (prim)
+      void addServer({ action: "default", id: prim.id }, "Primary updated");
   }
 
   function persistUpis(next: UpiId[]) {
-    setUpis(next);
-    try {
-      localStorage.setItem(UPI_KEY, JSON.stringify(next));
-    } catch {
-      /* ignore */
-    }
+    const keep = new Set([...next.map((u) => u.id), ...banks.map((b) => b.id)]);
+    const current = [...banks.map((b) => b.id), ...upis.map((u) => u.id)];
+    for (const id of current) if (!keep.has(id)) void removeServer(id);
+    const prim = next.find((u) => u.primary);
+    if (prim)
+      void addServer({ action: "default", id: prim.id }, "Primary updated");
   }
 
-  function addBank(e: React.FormEvent) {
+  async function addBank(e: React.FormEvent) {
     e.preventDefault();
     const accountNo = form.accountNo.replace(/\s/g, "");
     const ifsc = form.ifsc.trim().toUpperCase();
@@ -118,24 +244,26 @@ export default function BanksPage() {
       sileo.error({ title: "IFSC looks wrong (e.g. HDFC0001234)" });
       return;
     }
-    const entry: BankAccount = {
-      id: Math.random().toString(36).slice(2),
-      label: form.label.trim() || form.bank.trim(),
-      holder: form.holder.trim(),
-      bank: form.bank.trim(),
-      accountNo,
-      ifsc,
-      primary: banks.length === 0,
-      verified: false,
-      addedAt: Date.now(),
-    };
-    persistBanks([...banks, entry]);
+    // The server validates again, and its answer is the one that counts — this
+    // check is only here so the customer is not made to wait for the round trip
+    // to be told their account number is too short.
+    const ok = await addServer(
+      {
+        kind: "bank",
+        label: form.label.trim() || form.bank.trim(),
+        holderName: form.holder.trim(),
+        accountNumber: accountNo,
+        ifsc,
+        bankName: form.bank.trim(),
+      },
+      "Bank account saved",
+    );
+    if (!ok) return;
     setForm({ label: "", holder: "", bank: "", accountNo: "", ifsc: "" });
     setShowBank(false);
-    sileo.success({ title: "Bank account saved" });
   }
 
-  function addUpi(e: React.FormEvent) {
+  async function addUpi(e: React.FormEvent) {
     e.preventDefault();
     const vpa = upi.trim();
     if (!UPI_RE.test(vpa)) {
@@ -146,18 +274,10 @@ export default function BanksPage() {
       sileo.error({ title: "That UPI id is already added" });
       return;
     }
-    persistUpis([
-      ...upis,
-      {
-        id: Math.random().toString(36).slice(2),
-        vpa,
-        primary: upis.length === 0,
-        addedAt: Date.now(),
-      },
-    ]);
+    const ok = await addServer({ kind: "upi", upiId: vpa }, "UPI id saved");
+    if (!ok) return;
     setUpi("");
     setShowUpi(false);
-    sileo.success({ title: "UPI id saved" });
   }
 
   const bankFields = [

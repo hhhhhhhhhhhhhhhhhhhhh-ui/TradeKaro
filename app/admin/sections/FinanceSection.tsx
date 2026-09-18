@@ -103,17 +103,20 @@ export default function FinanceSection({
   const [busy, setBusy] = useState("");
   const [note, setNote] = useState("");
 
-  // Payout form
+  // Manual payout for a customer who asked off-platform. There is deliberately
+  // NO free-text beneficiary field anywhere on this page: money may only go to
+  // an account the customer themselves saved, because a beneficiary typed by an
+  // operator is a typo away from a stranger's account.
   const [po, setPo] = useState({
     id: "",
     amount: "",
-    method: "upi",
-    beneficiaryName: "",
-    beneficiaryAccount: "",
-    ifsc: "",
-    bankName: "",
+    accountId: "",
+    accounts: [] as any[],
+    withdrawable: 0,
+    loaded: false,
   });
-  const [confirmPayout, setConfirmPayout] = useState(false);
+  const [rejectId, setRejectId] = useState("");
+  const [rejectReason, setRejectReason] = useState("");
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -144,6 +147,34 @@ export default function FinanceSection({
   const savePay = async (patch: Record<string, unknown>) => {
     await save({ payments: patch });
     await load();
+  };
+
+  /** One operator action against the withdrawal queue. */
+  const act = async (action: string, payload: Record<string, unknown>) => {
+    setBusy(action);
+    setNote("");
+    try {
+      const r = await fetch("/api/admin/payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, ...payload }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setNote(
+        r.ok
+          ? `${action} done`
+          : // An ambiguous failure is the one an operator must not retry blindly.
+            j.ambiguous
+            ? `${j.error}`
+            : j.error || `${action} failed`,
+      );
+      await load();
+      return r.ok;
+    } finally {
+      setBusy("");
+      setRejectId("");
+      setRejectReason("");
+    }
   };
 
   const field = (key: string, label: string, secret = false) => (
@@ -433,11 +464,23 @@ export default function FinanceSection({
             </Callout>
           </Card>
 
-          <Card title="Limits" sub="What a customer may top up in one order.">
+          <Card
+            title="Limits"
+            sub="Deposits and withdrawals are decided by different things, so they have separate limits."
+          >
             <div className="grid gap-3 sm:grid-cols-2">
-              {numField("minAmount", "Minimum top-up ₹")}
-              {numField("maxAmount", "Maximum top-up ₹")}
+              {numField("minAmount", "Minimum deposit ₹")}
+              {numField("maxAmount", "Maximum deposit ₹")}
+              {numField("minWithdraw", "Minimum withdrawal ₹")}
+              {numField("maxWithdraw", "Maximum withdrawal ₹")}
             </div>
+            <Callout tone="info">
+              The withdrawal limits apply per request, and are checked again
+              server-side when the customer asks — the form cannot offer an
+              amount the ledger will refuse. Anything already requested is held
+              against the balance, so a customer cannot ask for the same money
+              twice while a request is waiting for you.
+            </Callout>
           </Card>
 
           <Card
@@ -538,14 +581,131 @@ export default function FinanceSection({
       {st && sub === "Payouts" ? (
         <>
           <Card
-            title="Send a payout"
-            sub="Money out. Capped at what the customer actually funded — the seeded practice balance is not withdrawable."
+            title={`Withdrawal requests${d?.withdrawalSummary?.pendingCount ? ` (${d.withdrawalSummary.pendingCount})` : ""}`}
+            sub="Oldest first. Approving sends the money to the account the customer saved — the amount and the destination cannot be edited, only approved or rejected."
           >
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {!st.payoutsEnabled ? (
+              <Callout tone="warn">
+                Pay-outs are switched off, so nothing can be sent. Turn on
+                “Allow pay-outs” in Settings first — approving below will fail
+                until you do.
+              </Callout>
+            ) : null}
+
+            {!(d?.queue || []).length ? (
+              <EmptyState
+                title="Nothing waiting"
+                hint="Requests appear here the moment a customer asks for a withdrawal."
+              />
+            ) : (
+              <TableWrap>
+                <thead>
+                  <tr>
+                    <th className={thCls}>Requested</th>
+                    <th className={thCls}>Account</th>
+                    <th className={thCls}>Amount</th>
+                    <th className={thCls}>Send to</th>
+                    <th className={thCls} />
+                  </tr>
+                </thead>
+                <tbody>
+                  {d.queue.map((w: any) => (
+                    <tr key={w.id} className={trCls}>
+                      <td className={tdCls}>{when(w.requested_at)}</td>
+                      <td className={`${tdCls} font-mono text-[12px]`}>
+                        {w.user_id}
+                      </td>
+                      <td className={`${tdCls} font-mono font-semibold`}>
+                        {moneyFmt(w.amount, 2)}
+                      </td>
+                      <td className={`${tdCls} text-[12px]`}>
+                        {w.destination}
+                      </td>
+                      <td className={`${tdCls} text-right`}>
+                        {rejectId === w.id ? (
+                          <span className="flex flex-wrap items-center justify-end gap-2">
+                            <input
+                              value={rejectReason}
+                              onChange={(e) => setRejectReason(e.target.value)}
+                              placeholder="Reason — the customer sees it"
+                              className={`${inputCls} max-w-[260px]`}
+                            />
+                            <button
+                              type="button"
+                              disabled={!!busy}
+                              onClick={() =>
+                                act("reject", {
+                                  id: w.id,
+                                  reason: rejectReason,
+                                })
+                              }
+                              className={btnGhost}
+                            >
+                              Confirm reject
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRejectId("")}
+                              className={btnGhost}
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <span className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={!canEdit || !!busy}
+                              onClick={() => act("approve", { id: w.id })}
+                              className={btnPrimary}
+                            >
+                              {busy === "approve"
+                                ? "Sending…"
+                                : "Approve & pay"}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!canEdit || !!busy}
+                              onClick={() => setRejectId(w.id)}
+                              className={btnGhost}
+                            >
+                              Reject
+                            </button>
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableWrap>
+            )}
+
+            <Callout tone="info">
+              Approving is the only action that moves money, and it is safe to
+              click twice: the payout carries the request&apos;s own id, so a
+              repeat is rejected as a duplicate rather than paid again. If the
+              provider times out, the request stays approved and you are told to
+              check before retrying — a timeout is not a refusal.
+            </Callout>
+          </Card>
+
+          <Card
+            title="Manual payout"
+            sub="For a customer who asked off-platform. It still writes a withdrawal, so their balance moves either way and the books cannot drift."
+          >
+            <div className="grid gap-3 sm:grid-cols-3">
               <Field label="Client id">
                 <input
                   value={po.id}
-                  onChange={(e) => setPo({ ...po, id: e.target.value })}
+                  onChange={(e) =>
+                    setPo({
+                      ...po,
+                      id: e.target.value,
+                      loaded: false,
+                      accounts: [],
+                      accountId: "",
+                    })
+                  }
                   placeholder="e.g. 42"
                   className={inputCls}
                 />
@@ -559,134 +719,91 @@ export default function FinanceSection({
                   className={inputCls}
                 />
               </Field>
-              <Field label="Method">
+              <Field label="Send to">
                 <select
-                  value={po.method}
-                  onChange={(e) => setPo({ ...po, method: e.target.value })}
+                  value={po.accountId}
+                  disabled={!po.accounts.length}
+                  onChange={(e) => setPo({ ...po, accountId: e.target.value })}
                   className={`${selectCls} w-full`}
                 >
-                  <option value="upi">UPI</option>
-                  <option value="bank">Bank transfer</option>
+                  <option value="">
+                    {po.accounts.length
+                      ? "Choose a saved account"
+                      : "Load the client first"}
+                  </option>
+                  {po.accounts.map((x: any) => (
+                    <option key={x.id} value={x.id}>
+                      {x.description}
+                    </option>
+                  ))}
                 </select>
               </Field>
-              <Field label="Beneficiary name">
-                <input
-                  value={po.beneficiaryName}
-                  onChange={(e) =>
-                    setPo({ ...po, beneficiaryName: e.target.value })
-                  }
-                  className={inputCls}
-                />
-              </Field>
-              <Field label={po.method === "upi" ? "UPI VPA" : "Account number"}>
-                <input
-                  value={po.beneficiaryAccount}
-                  onChange={(e) =>
-                    setPo({ ...po, beneficiaryAccount: e.target.value })
-                  }
-                  className={inputCls}
-                />
-              </Field>
-              {po.method === "bank" ? (
-                <>
-                  <Field label="IFSC">
-                    <input
-                      value={po.ifsc}
-                      onChange={(e) => setPo({ ...po, ifsc: e.target.value })}
-                      className={inputCls}
-                    />
-                  </Field>
-                  <Field label="Bank name">
-                    <input
-                      value={po.bankName}
-                      onChange={(e) =>
-                        setPo({ ...po, bankName: e.target.value })
-                      }
-                      className={inputCls}
-                    />
-                  </Field>
-                </>
-              ) : null}
             </div>
 
-            {!st.payoutsEnabled ? (
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={async () => {
+                  setBusy("load");
+                  try {
+                    const r = await fetch(
+                      `/api/admin/payments?id=${encodeURIComponent(po.id)}`,
+                      { cache: "no-store" },
+                    );
+                    const j = await r.json().catch(() => ({}));
+                    setPo((p) => ({
+                      ...p,
+                      accounts: j?.user?.accounts || [],
+                      withdrawable: Number(j?.user?.withdrawable) || 0,
+                      loaded: true,
+                    }));
+                  } finally {
+                    setBusy("");
+                  }
+                }}
+                disabled={!po.id || !!busy}
+                className={btnGhost}
+              >
+                {busy === "load" ? "Loading…" : "Load accounts"}
+              </button>
+              {po.loaded ? (
+                <span className="text-[12px] text-muted-foreground">
+                  {po.accounts.length} saved account
+                  {po.accounts.length === 1 ? "" : "s"} · withdrawable{" "}
+                  {moneyFmt(po.withdrawable, 2)}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                disabled={
+                  !canEdit ||
+                  !st.payoutsEnabled ||
+                  !!busy ||
+                  !po.accountId ||
+                  !(Number(po.amount) > 0)
+                }
+                onClick={async () => {
+                  const ok = await act("manual", {
+                    id: po.id,
+                    amount: Number(po.amount),
+                    accountId: po.accountId,
+                  });
+                  if (ok) setPo({ ...po, amount: "" });
+                }}
+                className={btnPrimary}
+              >
+                {busy === "manual" ? "Sending…" : "Send payout"}
+              </button>
+            </div>
+
+            {po.loaded && !po.accounts.length ? (
               <Callout tone="warn">
-                Pay-outs are switched off. Turn on “Allow pay-outs” in Settings
-                first.
+                This customer has no saved payout account. Ask them to add one
+                under Profile → Banks &amp; UPI — a payout cannot be sent
+                without one, and there is deliberately no free-text beneficiary
+                field here to work around that.
               </Callout>
             ) : null}
-
-            {!confirmPayout ? (
-              <div>
-                <button
-                  type="button"
-                  disabled={!canEdit || !st.payoutsEnabled}
-                  onClick={() => setConfirmPayout(true)}
-                  className={btnPrimary}
-                >
-                  Send payout
-                </button>
-              </div>
-            ) : (
-              <Callout tone="warn">
-                <div className="flex flex-col gap-2">
-                  <span>
-                    Send <strong>{moneyFmt(po.amount, 2)}</strong> to{" "}
-                    <strong>{po.beneficiaryName || "—"}</strong> (
-                    {po.beneficiaryAccount || "—"}) for client{" "}
-                    <strong>{po.id || "—"}</strong>? This moves real money and
-                    cannot be undone from here.
-                  </span>
-                  <span className="flex gap-2">
-                    <button
-                      type="button"
-                      disabled={!!busy}
-                      onClick={async () => {
-                        setBusy("payout");
-                        setNote("");
-                        try {
-                          const r = await fetch("/api/admin/payments", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              id: po.id,
-                              amount: Number(po.amount),
-                              method: po.method,
-                              beneficiaryName: po.beneficiaryName,
-                              beneficiaryAccount: po.beneficiaryAccount,
-                              ifsc: po.ifsc,
-                              bankName: po.bankName,
-                            }),
-                          });
-                          const j = await r.json().catch(() => ({}));
-                          if (!r.ok) setNote(j.error || "Payout failed");
-                          else {
-                            setNote(
-                              `Sent ${moneyFmt(j.payout?.amount, 2)} — ${j.payout?.status}`,
-                            );
-                            setPo({ ...po, amount: "" });
-                          }
-                          await load();
-                        } finally {
-                          setBusy("");
-                          setConfirmPayout(false);
-                        }
-                      }}
-                      className={btnPrimary}
-                    >
-                      {busy === "payout" ? "Sending…" : "Confirm and send"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setConfirmPayout(false)}
-                      className={btnGhost}
-                    >
-                      Cancel
-                    </button>
-                  </span>
-                </div>
-              </Callout>
-            )}
           </Card>
 
           <Card

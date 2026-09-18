@@ -116,6 +116,10 @@ export type AdminSettings = {
     baseUrl: string;
     minAmount: number;
     maxAmount: number;
+    /** Withdrawal limits. Separate from the deposit pair on purpose — the two
+     *  are decided by different things. */
+    minWithdraw: number;
+    maxWithdraw: number;
     payoutsEnabled: boolean;
   };
   updatedAt: number;
@@ -174,7 +178,12 @@ export const DEFAULT_SETTINGS: AdminSettings = {
   },
   marketHours: { open: "09:15", close: "15:30", holidays: [] },
   trading: {
-    startCash: 100000,
+    // Zero by default. This platform now moves real money, and a seeded balance
+    // of virtual cash that could be withdrawn against would be money created
+    // from nothing. Accounts created before this change keep whatever they were
+    // seeded with — the admin console says so rather than silently rewriting a
+    // live balance.
+    startCash: 0,
     maxQty: 10000,
     maxPositions: 50,
     allowShort: true,
@@ -199,6 +208,8 @@ export const DEFAULT_SETTINGS: AdminSettings = {
     baseUrl: "https://ttpay.business/api/public/v1",
     minAmount: 100,
     maxAmount: 100000,
+    minWithdraw: 500,
+    maxWithdraw: 200000,
     payoutsEnabled: false,
   },
   updatedAt: Date.now(),
@@ -250,6 +261,21 @@ export async function saveSessions(s: AdminSession[]) {
   saveBlocks("admin_sessions", s);
 }
 
+/** The practice capital older installs were created with. */
+const LEGACY_START_CASH = 100_000;
+
+/**
+ * 0 for anything still carrying the old seeded default, otherwise what is set.
+ *
+ * Only the exact old default is migrated. Any other number stays, because past
+ * that point somebody typed it and it was a decision rather than an inheritance.
+ */
+function zeroSeededCapital(block: any): number {
+  const v = Number(block?.startCash);
+  if (!Number.isFinite(v)) return DEFAULT_SETTINGS.trading.startCash;
+  return v === LEGACY_START_CASH ? 0 : v;
+}
+
 export async function getSettings(): Promise<AdminSettings> {
   let s: AdminSettings = DEFAULT_SETTINGS;
   try {
@@ -282,6 +308,18 @@ export async function getSettings(): Promise<AdminSettings> {
     trading: {
       ...DEFAULT_SETTINGS.trading,
       ...((s as any)?.trading ?? (s as any)?.paper),
+      // ── Zeroing the seeded capital ──
+      // This platform now moves real money, and a seeded balance that can be
+      // withdrawn against is money created from nothing. Changing the DEFAULT
+      // achieves nothing on any install that has saved its settings — the row
+      // wins — so the old default is migrated once, and only when it is exactly
+      // the old default, which means nobody ever deliberately chose it.
+      //
+      // This does NOT touch `trade_accounts`, so accounts already seeded keep
+      // their capital. Rewriting a live balance is a decision for an operator,
+      // not something a deploy should do quietly; the console reports how many
+      // accounts are still affected.
+      startCash: zeroSeededCapital((s as any)?.trading ?? (s as any)?.paper),
     },
     kyc: { ...DEFAULT_SETTINGS.kyc, ...(s as any)?.kyc },
     payments: {

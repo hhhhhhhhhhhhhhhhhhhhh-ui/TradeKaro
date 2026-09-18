@@ -31,6 +31,14 @@ export default function FundsPanel(props: { remainingCash: number }) {
   const [pending, setPending] = useState(0);
   const [log, setLog] = useState<Deposit[]>([]);
 
+  // The withdrawal side. Fetched rather than derived: the allowed amount, the
+  // limits and the account list all come from the server, so the form cannot
+  // offer something the request would then be refused for.
+  const [wd, setWd] = useState<any>(null);
+  const [wdAmt, setWdAmt] = useState("");
+  const [wdAcct, setWdAcct] = useState("");
+  const [wdBusy, setWdBusy] = useState(false);
+
   // Unified broker-style wallet: seeded capital + deposits − fills − charges.
   const wallet =
     typeof window === "undefined"
@@ -80,6 +88,58 @@ export default function FundsPanel(props: { remainingCash: number }) {
       alive = false;
     };
   }, [payCfg?.enabled]);
+
+  const loadWithdrawals = useCallback(async () => {
+    try {
+      const r = await fetch("/api/withdrawals", { cache: "no-store" });
+      if (!r.ok) return;
+      const j = await r.json();
+      setWd(j);
+      setWdAcct((cur: string) => cur || j?.accounts?.[0]?.id || "");
+    } catch {
+      /* the panel still works without it */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadWithdrawals();
+  }, [loadWithdrawals]);
+
+  /**
+   * Ask for a withdrawal.
+   *
+   * Nothing is decided here: the amount, the account and whether this user is
+   * allowed at all are all re-checked server-side, and the money stops being
+   * available the moment the request is accepted — not when it is approved.
+   */
+  async function requestWithdrawalNow() {
+    const amount = Number(wdAmt);
+    if (!(amount > 0)) {
+      sileo.error({ title: "Enter an amount above zero" });
+      return;
+    }
+    setWdBusy(true);
+    try {
+      const r = await fetch("/api/withdrawals", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, accountId: wdAcct }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) {
+        sileo.error({ title: j?.error || "Could not request that withdrawal" });
+        return;
+      }
+      setWdAmt("");
+      sileo.success({
+        title: "Withdrawal requested",
+        description: "It appears here once an operator approves it.",
+      });
+      await loadWithdrawals();
+    } finally {
+      setWdBusy(false);
+    }
+  }
 
   /**
    * Pay through the gateway.
@@ -207,6 +267,102 @@ export default function FundsPanel(props: { remainingCash: number }) {
           </>
         ) : null}
       </div>
+
+      {/* Withdrawals. Hidden until the rail is on, because a request nobody can
+          pay is worse than no button at all. */}
+      {wd?.enabled ? (
+        <div className="mb-3 border-t border-border pt-3">
+          <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
+            <span className="font-semibold uppercase tracking-wide text-foreground">
+              Withdraw
+            </span>
+            <span className="text-foreground/70">
+              Available {money(Number(wd.withdrawable) || 0)}
+            </span>
+            {Number(wd.withdrawn) > 0 ? (
+              <span>Requested {money(Number(wd.withdrawn))}</span>
+            ) : null}
+            <span>
+              Min {money(Number(wd.minWithdraw) || 0)} · Max{" "}
+              {money(Number(wd.maxWithdraw) || 0)}
+            </span>
+          </div>
+
+          {!wd.accounts?.length ? (
+            <div className="text-[12px] text-muted-foreground">
+              Add a UPI ID or bank account in{" "}
+              <a href="/profile/banks" className="underline">
+                Banks &amp; UPI
+              </a>{" "}
+              first — withdrawals are paid to an account you have saved, and the
+              server needs it before it can send anything.
+            </div>
+          ) : !wd.kycEligible ? (
+            <div className="text-[12px] text-muted-foreground">
+              Complete KYC to withdraw. It unlocks once your deposits reach the
+              amount set by the operator.
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              <select
+                value={wdAcct}
+                onChange={(e) => setWdAcct(e.target.value)}
+                className="display-num h-11 min-w-[200px] border border-border px-2 text-[12.5px]"
+              >
+                {wd.accounts.map((a: any) => (
+                  <option key={a.id} value={a.id}>
+                    {a.description}
+                    {a.isDefault ? " · default" : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                min="1"
+                value={wdAmt}
+                onChange={(e) => setWdAmt(e.target.value)}
+                placeholder="Amount ₹"
+                className="display-num h-11 w-[130px] border border-border px-2 font-mono text-sm"
+              />
+              <button
+                disabled={wdBusy}
+                onClick={requestWithdrawalNow}
+                className="pressable h-11 border border-border px-4 font-mono text-[12px] font-bold disabled:opacity-50"
+              >
+                {wdBusy ? "REQUESTING…" : "WITHDRAW"}
+              </button>
+            </div>
+          )}
+
+          {wd.withdrawals?.length ? (
+            <div className="mt-2 flex flex-col gap-1">
+              {wd.withdrawals.slice(0, 4).map((w: any) => (
+                <div
+                  key={w.id}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-[11.5px]"
+                >
+                  <span className="font-mono">{money(Number(w.amount))}</span>
+                  <span
+                    className={
+                      w.status === "success"
+                        ? "text-positive"
+                        : w.status === "rejected" || w.status === "failed"
+                          ? "text-negative"
+                          : "text-muted-foreground"
+                    }
+                  >
+                    {w.status === "requested" ? "awaiting approval" : w.status}
+                  </span>
+                  <span className="text-muted-foreground">{w.destination}</span>
+                  {w.reason ? (
+                    <span className="text-negative">{w.reason}</span>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Deposits are the gate on KYC, so the requirement belongs next to the
           box that moves it. */}

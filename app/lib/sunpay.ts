@@ -43,7 +43,21 @@ export type SunpayConfig = {
 
 export type GatewayResult<T> =
   | { ok: true; data: T }
-  | { ok: false; error: string; status: number };
+  | {
+      ok: false;
+      error: string;
+      status: number;
+      /**
+       * What KIND of failure this was. The distinction decides whether money can
+       * be retried, so it is classified here rather than guessed by the caller:
+       *
+       *   auth    — our credentials or signature are wrong. Nothing was sent.
+       *   config  — the rail is disabled at the provider. Nothing was sent.
+       *   network — timed out or unreachable. THE TRANSFER MAY BE IN FLIGHT.
+       *   refused — the provider said no to this specific transfer. Nothing sent.
+       */
+      kind?: "auth" | "config" | "network" | "refused";
+    };
 
 /**
  * Where the credentials come from.
@@ -176,6 +190,7 @@ async function call<T>({
         ? `Gateway did not respond in ${TIMEOUT_MS / 1000}s`
         : `Could not reach the gateway: ${e?.message || e}`,
       status: 504,
+      kind: "network",
     };
   }
 
@@ -194,6 +209,27 @@ async function call<T>({
       parsed?.error ||
       parsed?.message ||
       (text ? text.slice(0, 160) : `HTTP ${res.status}`);
+
+    // Configuration and credential failures are OUR problem, not a decision
+    // about this transfer — and they are the ones that must not be mistaken for
+    // "maybe it went through", because retrying them is safe and retrying a
+    // timeout is not.
+    const CONFIG_CODES = new Set([
+      "payout_disabled",
+      "payin_disabled",
+      "merchant_inactive",
+      "channel_not_found",
+      "channel_inactive",
+      "channel_not_configured",
+      "channel_direct_dependency_unmet",
+    ]);
+    const kind =
+      res.status === 401 || res.status === 403
+        ? "auth"
+        : CONFIG_CODES.has(String(code))
+          ? "config"
+          : "refused";
+
     return {
       ok: false,
       // A signature mismatch is our bug, not the user's, so say so plainly
@@ -201,13 +237,16 @@ async function call<T>({
       error:
         code === "invalid_signature"
           ? "Gateway rejected our signature — check the API secret"
-          : String(code),
+          : code === "invalid_api_key"
+            ? "Gateway rejected our API key — check which key is loaded"
+            : String(code),
       status:
         res.status === 401 || res.status === 403
           ? 502
           : res.status >= 400
             ? res.status
             : 502,
+      kind,
     };
   }
 

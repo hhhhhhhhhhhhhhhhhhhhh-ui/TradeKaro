@@ -1512,6 +1512,113 @@ await check("payments: a repeated deposit idem credits once", async () => {
   };
 });
 
+// ── Withdrawals ─────────────────────────────────────────────────────────────
+// These hold in every configuration, including the shipped one where the
+// pay-out rail is OFF. The deeper ledger maths (a request holds its funds, a
+// rejection releases them, a gateway auth failure returns the request to the
+// queue) lives in the dedicated probe, which is allowed to move settings; what
+// is checked here is the part that must never regress in production.
+
+await check("withdrawals: unauthorised is refused", async () => {
+  const g = await get("/api/withdrawals");
+  const p = await post("/api/withdrawals", { amount: 1000, accountId: "x" });
+  const ok = g.status === 401 && p.status === 401;
+  return { ok, info: `GET=${g.status} POST=${p.status}` };
+});
+
+await check("withdrawals: a customer sees limits and masked accounts", async () => {
+  const h = { Authorization: "Bearer " + accountToken };
+  const r = await get("/api/withdrawals", h);
+  const j = r.json || {};
+  const fields = ["withdrawable", "minWithdraw", "maxWithdraw", "enabled"];
+  const missing = fields.filter((f) => j[f] === undefined);
+  // A destination may only ever leave the server masked, so no 9-18 digit run
+  // (a bank account number) may appear anywhere in the payload.
+  const rawAccountNumber = /\d{9,18}/.test(JSON.stringify(j));
+  const shaped = (j.accounts || []).every(
+    (a) => a.description && !a.account_number && !a.upi_id,
+  );
+  const ok = r.status === 200 && !missing.length && !rawAccountNumber && shaped;
+  return {
+    ok,
+    info: missing.length
+      ? `missing: ${missing.join(", ")}`
+      : rawAccountNumber
+        ? "a raw account number reached the browser"
+        : `withdrawable=₹${j.withdrawable} min=₹${j.minWithdraw} max=₹${j.maxWithdraw} rail=${j.enabled ? "on" : "off"} accounts=${(j.accounts || []).length}`,
+  };
+});
+
+await check(
+  "withdrawals: the free balance agrees with the trading ledger",
+  async () => {
+    // One number, two endpoints. If these ever diverge, the withdraw form is
+    // offering an amount the request will refuse — or worse, more than is there.
+    const h = { Authorization: "Bearer " + accountToken };
+    const w = (await get("/api/withdrawals", h)).json || {};
+    const t = (await post("/api/trade", { action: "load" }, h)).json?.account || {};
+    const ok =
+      Math.abs(Number(w.withdrawable) - Number(t.withdrawable)) < 0.01 &&
+      Math.abs(Number(w.withdrawn) - Number(t.withdrawn)) < 0.01;
+    return {
+      ok,
+      info: `withdrawals=${w.withdrawable} trade=${t.withdrawable} held=${w.withdrawn}`,
+    };
+  },
+);
+
+await check("withdrawals: a bad request never creates a row", async () => {
+  const h = { Authorization: "Bearer " + accountToken };
+  const before = ((await get("/api/withdrawals", h)).json?.withdrawals || []).length;
+  const state = (await get("/api/withdrawals", h)).json || {};
+
+  // An unknown destination is refused whatever the rail is doing; if pay-outs
+  // are switched off the rail check answers first, and that is also a refusal.
+  const over = await post(
+    "/api/withdrawals",
+    { amount: 9_000_000, accountId: "not-a-real-account" },
+    h,
+  );
+  const after = ((await get("/api/withdrawals", h)).json?.withdrawals || []).length;
+  const refused = over.status >= 400;
+  const ok = refused && before === after;
+  return {
+    ok,
+    info: ok
+      ? `refused with ${over.status} ("${String(over.json?.error || "").slice(0, 60)}"), rows ${before}->${after}`
+      : `status=${over.status} rows ${before}->${after} rail=${state.enabled ? "on" : "off"}`,
+  };
+});
+
+await check("withdrawals: the request path rejects a foreign account", async () => {
+  // Cross-user theft is the failure that matters here: a customer must not be
+  // able to name someone else's saved destination and have the money sent there.
+  const h = { Authorization: "Bearer " + accountToken };
+  const state = (await get("/api/withdrawals", h)).json || {};
+  if (!state.enabled) {
+    // Rail off — the request path is closed entirely, which is the stronger
+    // statement. Report it rather than pretending this proved the ownership rule.
+    const r = await post(
+      "/api/withdrawals",
+      { amount: 1000, accountId: "u-00000000/foreign" },
+      h,
+    );
+    return {
+      ok: r.status === 503,
+      info: `rail off — request refused with ${r.status}`,
+    };
+  }
+  const r = await post(
+    "/api/withdrawals",
+    { amount: 1000, accountId: "u-00000000/foreign" },
+    h,
+  );
+  return {
+    ok: r.status === 400 && /account/i.test(String(r.json?.error || "")),
+    info: `status=${r.status} error=${JSON.stringify(r.json?.error)}`,
+  };
+});
+
 console.log("\n─── smoke results ───");
 for (const line of results) console.log(line);
 console.log(`\n${results.length - failed}/${results.length} passed`);

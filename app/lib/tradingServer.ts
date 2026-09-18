@@ -2,6 +2,7 @@ import { db } from "./db";
 import { ledgerKeyFor } from "./authStore";
 import { runtimeSettings } from "./adminRuntime";
 import { marginPctForEmail } from "./clientRegistry";
+import { withdrawnTotal } from "./withdrawals";
 import { depositedTotal } from "./deposits";
 import { kycGate, normalizeMinDeposit } from "./kycGate";
 import { cached } from "./marketCache";
@@ -102,6 +103,14 @@ export type TradeAccount = {
   freeMargin: number;
   /** Money the user has funded. Already included in `startCash`. */
   deposited: number;
+  /**
+   * Withdrawals that have taken money out of the available balance — asked for,
+   * approved, in flight or already sent. Only rejected and failed requests are
+   * excluded, because only those freed the money again.
+   */
+  withdrawn: number;
+  /** What may be requested right now: free cash, floored at zero. */
+  withdrawable: number;
 };
 
 type FillRow = {
@@ -397,7 +406,12 @@ export function deriveAccount(key: string, marginPct = 100): TradeAccount {
     0,
   );
   const marginUsed = (grossExposure * marginPct) / 100;
-  const free = startCash + realizedPnl - charges - marginUsed;
+  // Money asked for and not yet released is no longer available to trade with.
+  // Counting it here rather than at the approval step is what stops a customer
+  // requesting ₹5,000 twice while an operator is still deciding — the second
+  // request simply finds no free cash, with no lock and no race to lose.
+  const withdrawn = withdrawnTotal(key);
+  const free = startCash + realizedPnl - charges - marginUsed - withdrawn;
 
   return {
     startCash,
@@ -418,6 +432,9 @@ export function deriveAccount(key: string, marginPct = 100): TradeAccount {
     marginUsed,
     freeMargin: free,
     deposited,
+    withdrawn,
+    /** What may be asked for right now. Never negative. */
+    withdrawable: Math.max(0, free),
   };
 }
 
@@ -989,9 +1006,7 @@ const SWEEP_SEGMENTS: ExchangeCode[] = [EQUITY_EXCHANGE, "MCX", "NSCOM"];
  * market at 15:30, so one shared cutoff either flattened commodities eight
  * hours early or held equity legs open all evening.
  */
-export async function sweepMisSquareOff(
-  now = new Date(),
-): Promise<{
+export async function sweepMisSquareOff(now = new Date()): Promise<{
   swept: number;
   unpriced: number;
   unclassified: number;
@@ -1263,6 +1278,8 @@ export async function publicAccount(key: string, email?: string | null) {
     marginUsed: r2(a.marginUsed),
     freeMargin: r2(a.freeMargin),
     deposited: r2(a.deposited),
+    withdrawn: r2(a.withdrawn),
+    withdrawable: r2(a.withdrawable),
     kycMinDeposit: gate.required,
     kycEligible: gate.eligible,
     kycRemaining: r2(gate.remaining),

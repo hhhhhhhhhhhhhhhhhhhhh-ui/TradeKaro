@@ -129,6 +129,8 @@ export async function POST(req: NextRequest) {
           : cur2.baseUrl,
       minAmount: amt(inc.minAmount, cur2.minAmount),
       maxAmount: amt(inc.maxAmount, cur2.maxAmount),
+      minWithdraw: amt(inc.minWithdraw, cur2.minWithdraw),
+      maxWithdraw: amt(inc.maxWithdraw, cur2.maxWithdraw),
       payinApiKey: keepSecret(inc.payinApiKey, cur2.payinApiKey),
       payinApiSecret: keepSecret(inc.payinApiSecret, cur2.payinApiSecret),
       payoutApiKey: keepSecret(inc.payoutApiKey, cur2.payoutApiKey),
@@ -137,6 +139,8 @@ export async function POST(req: NextRequest) {
     // A max below the min would make every top-up impossible, and the failure
     // would present as "minimum exceeded" on an amount that looks fine.
     if (pay.maxAmount < pay.minAmount) pay.maxAmount = pay.minAmount;
+    if (pay.maxWithdraw && pay.maxWithdraw < pay.minWithdraw)
+      pay.maxWithdraw = pay.minWithdraw;
     // Refuse to take real money without the credentials to verify it. Enabling
     // this with a half-filled key pair is the one state that looks healthy and
     // silently fails every callback.

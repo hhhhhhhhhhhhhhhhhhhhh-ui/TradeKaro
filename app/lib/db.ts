@@ -14,7 +14,7 @@ const g = globalThis as any;
 // Bump whenever a table or index is added below. Next dev reuses the cached
 // handle across hot reloads, so the revision check re-applies this idempotent
 // DDL and new tables exist without restarting the server.
-const SCHEMA_REV = 8;
+const SCHEMA_REV = 9;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -215,6 +215,57 @@ const SCHEMA = `
     );
     CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_webhooks_state
       ON payment_webhooks(txn_id, status) WHERE txn_id IS NOT NULL;
+    -- ── Withdrawals ───────────────────────────────────────────────────────
+    -- Where a customer wants money sent. Server-side on purpose: a payout must
+    -- go to an account the SERVER knows about, because a beneficiary supplied
+    -- by the browser at withdrawal time is exactly the value an attacker would
+    -- want to control. This table is the replacement for the old device-only
+    -- fs_bank_accounts list, which the operator would otherwise have to retype
+    -- from a screenshot.
+    CREATE TABLE IF NOT EXISTS payout_accounts (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      label TEXT,
+      holder_name TEXT,
+      upi_id TEXT,
+      account_number TEXT,
+      ifsc TEXT,
+      bank_name TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_payout_accounts_user
+      ON payout_accounts(user_id, created_at);
+    -- The withdrawal ledger. One row per request, and it is the ONLY record of
+    -- money leaving — which is what makes the balance honest, because
+    -- deriveAccount subtracts the sum of everything not rejected or failed.
+    --
+    -- The id doubles as the gateway payout id, so approving twice cannot pay
+    -- twice: the second attempt sees a status that is no longer requested.
+    CREATE TABLE IF NOT EXISTS withdrawals (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      fee REAL NOT NULL DEFAULT 0,
+      net_amount REAL NOT NULL DEFAULT 0,
+      account_id TEXT,
+      status TEXT NOT NULL,
+      reason TEXT,
+      payout_id TEXT,
+      utr TEXT,
+      requested_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by TEXT,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_withdrawals_user
+      ON withdrawals(user_id, requested_at);
+    CREATE INDEX IF NOT EXISTS ix_withdrawals_status
+      ON withdrawals(status, requested_at);
+    CREATE INDEX IF NOT EXISTS ix_withdrawals_payout
+      ON withdrawals(payout_id);
 `;
 
 // Columns added after the first release. `ALTER TABLE ADD COLUMN` is not

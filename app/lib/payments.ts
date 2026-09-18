@@ -2,6 +2,16 @@ import crypto from "crypto";
 import { db } from "./db";
 import { runtimeSettings } from "./adminRuntime";
 import { recordDeposit } from "./deposits";
+import { accountById as payoutAccountById } from "./payoutAccounts";
+import {
+  attachPayout,
+  markApproved,
+  markProcessing,
+  markRejected,
+  reopen,
+  syncFromPayout,
+  withdrawalById,
+} from "./withdrawals";
 import {
   createPayin,
   createPayout,
@@ -476,19 +486,30 @@ export function paidOutTotal(userId: string): number {
 
 export type CreatePayoutOutcome =
   | { ok: true; payout: PayoutRow }
-  | { ok: false; error: string; status: number };
+  | {
+      ok: false;
+      error: string;
+      status: number;
+      /**
+       * Why it failed, passed through from the gateway client. The caller needs
+       * it to decide whether the money may be retried: `network` might have been
+       * sent, `auth`/`config`/`refused` definitely were not.
+       */
+      kind?: "auth" | "config" | "network" | "refused";
+    };
 
 /**
  * Send a payout.
  *
- * Gated twice: the master `payoutsEnabled` switch, and a ceiling of
- * `deposits − already paid out`.
+ * The ceiling is passed in as `budget`, computed by the caller from the ledger,
+ * rather than derived here. That is deliberate: with withdrawals now holding
+ * their own funds in `deriveAccount`, a payout that re-derived its own cap from
+ * `deposits − already paid out` would double-count the hold and refuse a
+ * perfectly valid withdrawal.
  *
- * ⚠️ That ceiling is deliberately conservative and is a placeholder for a real
- * rule. The account is seeded with virtual `start_cash` the moment it is used,
- * so paying out "the balance" would send real money against money that never
- * existed. Until someone decides whether profits are withdrawable, the only
- * defensible ceiling is what the customer actually funded.
+ * `payoutId` may be supplied so the caller can make the transfer idempotent —
+ * the withdrawal path passes the withdrawal's own id, which means a retry is
+ * rejected by the provider as a duplicate instead of paying twice.
  */
 export async function startPayout(input: {
   userId: string;
@@ -501,7 +522,9 @@ export async function startPayout(input: {
   bankName?: string;
   actor: string;
   notifyUrl?: string;
-  deposited: number;
+  /** Rupees this transfer may draw on, from the caller's own ledger maths. */
+  budget: number;
+  payoutId?: string;
 }): Promise<CreatePayoutOutcome> {
   const s = await runtimeSettings();
   const cfg = sunpayConfig(s);
@@ -511,11 +534,17 @@ export async function startPayout(input: {
       ok: false,
       error: "Online payments are switched off",
       status: 503,
+      kind: "config",
     };
   if (!cfg.payoutsEnabled)
-    return { ok: false, error: "Payouts are switched off", status: 503 };
+    return { ok: false, error: "Payouts are switched off", status: 503, kind: "config" };
   if (!railConfigured(cfg, "payout"))
-    return { ok: false, error: "Payout rail is not configured", status: 503 };
+    return {
+      ok: false,
+      error: "Payout rail is not configured",
+      status: 503,
+      kind: "config",
+    };
 
   const amount = money2(Number(input.amount));
   if (!Number.isFinite(amount) || amount <= 0)
@@ -533,20 +562,18 @@ export async function startPayout(input: {
       status: 400,
     };
 
-  const out = paidOutTotal(input.userId);
-  const ceiling = money2(input.deposited - out);
-  if (amount > ceiling)
+  const ceiling = money2(input.budget);
+  if (amount > ceiling + 0.01)
     return {
       ok: false,
       error:
-        `Withdrawable is ₹${Math.max(0, ceiling).toLocaleString("en-IN")} ` +
-        `(funded ₹${input.deposited.toLocaleString("en-IN")} minus ` +
-        `₹${out.toLocaleString("en-IN")} already sent). The seeded practice ` +
-        `balance is not withdrawable.`,
+        `Withdrawable is ₹${Math.max(0, ceiling).toLocaleString("en-IN")}. ` +
+        `Requests already awaiting approval are counted, so the same money ` +
+        `cannot be sent twice.`,
       status: 400,
     };
 
-  const payoutId = newOrderId("PO");
+  const payoutId = input.payoutId || newOrderId("PO");
   const now = Date.now();
   db.prepare(
     `INSERT INTO payment_payouts
@@ -585,7 +612,10 @@ export async function startPayout(input: {
     db.prepare(
       "UPDATE payment_payouts SET status = ?, note = ?, updated_at = ? WHERE payout_id = ?",
     ).run("failed", res.error.slice(0, 300), Date.now(), payoutId);
-    return { ok: false, error: res.error, status: res.status };
+    // `kind` MUST be forwarded. A credential or configuration failure comes back
+    // from the gateway as a 502 so the HTTP status alone cannot be trusted to
+    // mean "the transfer may be in flight" — only this field can.
+    return { ok: false, error: res.error, status: res.status, kind: res.kind };
   }
 
   const d = res.data;
@@ -608,6 +638,144 @@ export async function startPayout(input: {
       .prepare("SELECT * FROM payment_payouts WHERE payout_id = ?")
       .get(payoutId) as PayoutRow,
   };
+}
+
+/**
+ * Pay an approved withdrawal.
+ *
+ * Idempotent by construction: the gateway payout id IS the withdrawal id, and a
+ * second call finds a status that is no longer `requested` or `approved`. Two
+ * concurrent calls would still race, but the provider rejects the second on the
+ * duplicate payout id, so the money moves at most once.
+ *
+ * The failure handling is the part worth reading. A definite rejection from the
+ * gateway (a 4xx — bad account, below their minimum) means nothing was sent, so
+ * the withdrawal is marked `failed` and the funds are released back to the
+ * customer. A TIMEOUT is not a rejection: the transfer may well be in flight, so
+ * the withdrawal is left `approved` for a human to check. Releasing funds on an
+ * ambiguous error is how a customer gets paid twice, and it is the one mistake
+ * here that cannot be undone afterwards.
+ */
+export async function payOutWithdrawal(
+  id: string,
+  actor: string,
+  notifyUrl?: string,
+): Promise<
+  | { ok: true; withdrawal: any }
+  | { ok: false; error: string; status: number; ambiguous?: boolean }
+> {
+  const w = withdrawalById(id);
+  if (!w) return { ok: false, error: "No such withdrawal", status: 404 };
+  if (w.status !== "requested" && w.status !== "approved")
+    return {
+      ok: false,
+      error: `This withdrawal is already ${w.status}`,
+      status: 409,
+    };
+
+  const acct = w.account_id ? payoutAccountById(w.user_id, w.account_id) : null;
+  if (!acct)
+    return {
+      ok: false,
+      error: "The account this was requested to no longer exists",
+      status: 400,
+    };
+
+  // Configuration is checked BEFORE anything is written.
+  //
+  // This matters: an operator clicking Approve while the rail is switched off
+  // must get an error, not a rejected customer request. Marking it rejected
+  // would tell the customer their withdrawal was refused and hand them the money
+  // back, when in truth nobody ever tried to send it.
+  const s = await runtimeSettings();
+  const cfg = sunpayConfig(s);
+  if (!cfg.enabled)
+    return {
+      ok: false,
+      error: "Online payments are switched off",
+      status: 503,
+    };
+  if (!cfg.payoutsEnabled)
+    return { ok: false, error: "Pay-outs are switched off", status: 503 };
+  if (!railConfigured(cfg, "payout"))
+    return { ok: false, error: "Payout rail is not configured", status: 503 };
+
+  // Record the decision before the network hop, so a crash mid-send leaves an
+  // auditable `approved` row rather than a `requested` one nobody acted on.
+  markApproved(w.id, actor);
+
+  const res = await startPayout({
+    userId: w.user_id,
+    amount: w.amount,
+    method: acct.kind,
+    beneficiaryName: acct.holder_name || "Account holder",
+    beneficiaryAccount:
+      (acct.kind === "upi" ? acct.upi_id : acct.account_number) || "",
+    ifsc: acct.ifsc || undefined,
+    bankName: acct.bank_name || undefined,
+    actor,
+    notifyUrl,
+    // Already validated when it was requested, and the money is held by the
+    // ledger — so the budget is the amount itself.
+    budget: w.amount,
+    payoutId: w.id,
+  });
+
+  if (!res.ok) {
+    // Credentials or configuration: nothing was sent, so the request goes back
+    // in the queue. Reporting this as "maybe it went through" would leave the
+    // customer's money held on the strength of an error that says the opposite.
+    if (res.kind === "auth" || res.kind === "config") {
+      reopen(w.id);
+      return {
+        ok: false,
+        error: `${res.error}. Nothing was sent — the withdrawal is back in the queue.`,
+        status: 503,
+      };
+    }
+    // Only an UNCLASSIFIED 5xx is ambiguous. A classified failure must never be
+    // caught by the status check: the gateway answers a bad key with 502, and
+    // treating that as "maybe it was sent" would hold the customer's money on
+    // the strength of an error that says the opposite.
+    if (res.kind === "network" || (res.kind === undefined && res.status >= 500)) {
+      // Ambiguous: the transfer may be in flight, so a human has to look before
+      // anyone retries. Releasing the funds here is how someone gets paid twice.
+      return {
+        ok: false,
+        error: `${res.error}. The transfer may have been sent — check the gateway before retrying.`,
+        status: 502,
+        ambiguous: true,
+      };
+    }
+    // A definite refusal (bad account, below the provider's own minimum) means
+    // nothing moved, so the funds go back to the customer.
+    markRejected(w.id, actor, `Gateway refused: ${res.error}`);
+    return { ok: false, error: res.error, status: res.status };
+  }
+
+  attachPayout(w.id, res.payout.payout_id);
+  return { ok: true, withdrawal: withdrawalById(w.id) };
+}
+
+/** Turn a request down, releasing the funds held against it. */
+export function rejectWithdrawal(id: string, actor: string, reason: string) {
+  const w = withdrawalById(id);
+  if (!w)
+    return { ok: false as const, error: "No such withdrawal", status: 404 };
+  if (w.status !== "requested")
+    return {
+      ok: false as const,
+      error: `This withdrawal is already ${w.status}`,
+      status: 409,
+    };
+  if (!String(reason || "").trim())
+    return {
+      ok: false as const,
+      error: "Give a reason — the customer sees it",
+      status: 400,
+    };
+  markRejected(id, actor, reason);
+  return { ok: true as const, withdrawal: withdrawalById(id)! };
 }
 
 /** Apply a payout callback. Same verification and dedupe rules as pay-ins. */
@@ -663,8 +831,20 @@ export async function applyPayoutWebhook(
   const row = db
     .prepare("SELECT * FROM payment_payouts WHERE payout_id = ?")
     .get(payoutId) as PayoutRow | undefined;
+
+  // A withdrawal tracks the same event on the customer's side of the ledger.
+  // This runs whether or not a gateway-level row exists, because the withdrawal
+  // is the record the customer sees.
+  syncFromPayout(payoutId, status, {
+    utr: evt?.utr ? String(evt.utr) : null,
+    fee: Number.isFinite(Number(evt?.fee)) ? Number(evt.fee) : null,
+    net: Number.isFinite(Number(evt?.net_amount))
+      ? Number(evt.net_amount)
+      : null,
+  });
+
   if (!row)
-    return { status: 200, outcome: "unknown_payout", note: `no ${payoutId}` };
+    return { status: 200, outcome: "withdrawal_updated", note: payoutId };
 
   db.prepare(
     `UPDATE payment_payouts

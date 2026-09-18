@@ -255,10 +255,16 @@ the race is the duplicate signal, plus `recordDeposit`'s `idem` key derived from
 the same txn id. A webhook row records the outcome it finally reached
 (`credited`, `unknown_order`, `amount_mismatch`, …), never a hopeful `received`.
 
-Payouts are capped at `deposits − already paid out`. The account is seeded with
-virtual `start_cash`, so paying out "the balance" would send real money against
-money that never existed. ⚠️ That ceiling is a placeholder for a product
-decision, not a considered rule.
+A payout's ceiling comes from the **caller**, never from `payments.ts` re-deriving
+it. `startPayout` takes a `budget` and refuses anything above it. That is
+deliberate: with withdrawals holding their own funds (see §3e), a payout that
+recomputed `deposits − already paid out` would double-count the hold and refuse
+a perfectly valid withdrawal.
+
+⚠️ The account can still be seeded with virtual `start_cash`, so paying out "the
+balance" could send real money against money that never existed. `startCash`
+therefore defaults to **0** and `zeroSeededCapital()` migrates a stored row that
+still holds the old `100000` default. Real money in, real money out.
 
 `payments.enabled` defaults to **false**, and only a superadmin may change the
 keys or the switches. `/api/admin/settings` returns secrets only as `••••last4`
@@ -270,6 +276,64 @@ one from the form.
 SEBI"_. Enabling this makes both statements untrue, so the terms have to change
 and the regulatory question has to be answered first. The code ships off for that
 reason, not for want of working.
+
+## 3e. Withdrawals — the customer's half of the money path
+
+`app/lib/withdrawals.ts` is the ledger, `app/lib/payoutAccounts.ts` the
+destinations, and `app/lib/payments.ts` only does the network hop. The lifecycle
+is `requested → approved → processing → success`, with `rejected` and `failed` as
+the two states that **release** the funds (`RELEASED`).
+
+The load-bearing rule is the **hold**. `withdrawnTotal()` sums every withdrawal
+that is *not* released — including a `requested` one nobody has looked at yet —
+and `deriveAccount` subtracts it:
+
+```
+free = startCash + realizedPnl − charges − marginUsed − withdrawn
+```
+
+So asking for money removes it from `withdrawable` immediately, before any human
+or gateway is involved. Without this a customer could request ₹1,00,000 four
+times against one ₹1,00,000 balance, and an operator would happily approve all
+four. `withdrawable` is the only number the withdraw form is allowed to use, and
+`/api/withdrawals` reports the same figure as `/api/trade`, from the same ledger.
+
+**Destinations live on the server now**, in `payout_accounts`, replacing the
+device-only `fs_bank_accounts` / `fs_upi_ids` localStorage keys. A browser-side
+list cannot be trusted to decide where money goes, and it is not visible to the
+operator approving the transfer. `/api/payout-accounts` imports the old device
+list once and then clears it; `describeAccount` is the only way an account leaves
+the server, and it masks the number (`••••1234`) — the full value never reaches a
+response body. `DELETE` refuses while a pending withdrawal is pointed at the
+account (409) rather than orphaning it.
+
+The approve path is where the money can actually go wrong, so the error
+classification is explicit (`kind` on `GatewayResult`, forwarded by
+`startPayout`):
+
+| Gateway outcome | Meaning | What happens to the request |
+| --- | --- | --- |
+| `auth`, `config` | Our key/secret is wrong, or the rail is off at the provider. **Nothing was sent.** | `reopen()` → back to `requested`, funds stay held, it stays in the queue |
+| `network` (timeout, unreachable) or an **unclassified** 5xx | **The transfer may be in flight.** | Left `approved`, error returns `ambiguous: true`. A human checks the gateway before anyone retries |
+| `refused` (4xx: bad account, below the provider's minimum) | The provider said no to this transfer. Nothing was sent. | `markRejected()` with the gateway's reason, funds released |
+
+⚠️ The classified rows must be tested **before** any `status >= 500` check. The
+gateway answers a bad API key with HTTP 502, so a status-first ordering marks a
+credential error as "maybe it went through" — the customer's money is held on the
+strength of an error that says the opposite, and the operator sees a request that
+can never succeed sitting in the queue forever. Configuration is likewise checked
+_before_ `markApproved`, so approving while the rail is off is a clean 503 rather
+than a rejected customer.
+
+`payoutId` is the withdrawal's own id, which makes the transfer idempotent **at
+the provider**: a retry is refused as a duplicate payout instead of paying twice.
+A second click is already caught locally because the status is no longer
+`requested`/`approved`.
+
+Operator actions all live on `/admin` → **Finance** → Pay-outs (the queue, with
+Approve & pay / Reject + reason, and a manual payout that must name an account
+the customer owns — there is no free-text beneficiary anywhere in the console).
+`minWithdraw` / `maxWithdraw` are admin settings, defaults ₹500 / ₹2,00,000.
 
 ## 4. Backend on workers.dev (non-Upstox data)
 
