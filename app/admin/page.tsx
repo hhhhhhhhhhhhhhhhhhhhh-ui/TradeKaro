@@ -64,6 +64,22 @@ import {
 
 type Settings = Record<string, any>;
 
+/**
+ * How a deposit reached the ledger, in words.
+ *
+ * ⚠️ These three are NOT interchangeable, so none of them may fall through to a
+ * default: `gateway` is real money the customer paid online, `admin` is real
+ * money an operator credited, and `self` is the retired self-service credit —
+ * practice money that is tradeable but never withdrawable and never counts
+ * toward KYC. Labelling a gateway payment as "self" reads as fake money and
+ * invites an operator to dismiss a real payment.
+ */
+function depositLabel(method: unknown): string {
+  if (method === "admin") return " · by you";
+  if (method === "gateway") return " · paid online";
+  return " · self";
+}
+
 // The KYC deposit dropdown offers presets, but an operator may also type an
 // exact amount in the field beside it. Without this the select would show no
 // matching option for a hand-typed value and silently imply a preset.
@@ -4022,13 +4038,24 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                                       hour: "2-digit",
                                       minute: "2-digit",
                                     })}
-                                    {d.method === "admin"
-                                      ? " · by you"
-                                      : " · self"}
+                                    {depositLabel(d.method)}
                                   </span>
-                                  <span className="font-mono tabular-nums text-positive">
-                                    +{money(Number(d.amount) || 0)}
-                                  </span>
+                                  {/* A practice credit is not money. Showing it in
+                                      the same green as a real deposit reads as
+                                      withdrawable, which it never is — so it is
+                                      muted, and says so. */}
+                                  {d.method === "self" ? (
+                                    <span className="text-muted-foreground">
+                                      {money(Number(d.amount) || 0)}
+                                      <span className="ml-1 text-[10px] opacity-70">
+                                        practice · not withdrawable
+                                      </span>
+                                    </span>
+                                  ) : (
+                                    <span className="font-mono tabular-nums text-positive">
+                                      +{money(Number(d.amount) || 0)}
+                                    </span>
+                                  )}
                                 </div>
                               ))}
                             </div>
