@@ -68,7 +68,7 @@ export type InstrumentMaster = {
 };
 
 /** Bump on any change to how the master is derived. See `InstrumentMaster.v`. */
-const MASTER_VERSION = 4;
+const MASTER_VERSION = 5;
 
 let master: InstrumentMaster | null = null;
 let loading: Promise<InstrumentMaster> | null = null;
@@ -126,9 +126,12 @@ function splitCsvLine(line: string): string[] {
  * units. Taken at face value instead, one lot of GOLD would show ₹1.53 lakh of
  * exposure when a real lot is ₹1.53 crore.
  *
- * Everything absent from this table already reports the right figure, because
- * `lot_size` there IS the quoted units: SILVER 30 (30 kg, per kg), CRUDEOIL 100
- * (100 barrels, per barrel), COPPER 2500, ZINC 5, NATURALGAS 250.
+ * Everything absent from this table either reports the right figure, because
+ * `lot_size` there IS the quoted units — SILVER 30 (30 kg, per kg), CRUDEOIL 100
+ * (100 barrels, per barrel), COPPER 2500 (2.5 MT, per kg), NATURALGAS 1250 — or
+ * is in TONNES and is corrected by `MASTER_LOT_IN_TONNES` below. This sentence
+ * used to list ZINC's 5 as an example of a correct value. It was not: five
+ * tonnes were being read as five kilograms.
  */
 const QUOTED_UNITS_PER_LOT: Record<string, number> = {
   GOLD: 100, // 1 kg contract, quoted per 10 g
@@ -137,6 +140,49 @@ const QUOTED_UNITS_PER_LOT: Record<string, number> = {
   GOLD10G: 1, // 10 g contract, quoted per 10 g
   GOLD1G: 1, // 1 g contract, quoted per gram
   GOLDPETAL: 1, // 1 g contract, quoted per gram
+};
+
+/**
+ * Roots whose master `lot_size` is the contract weight in TONNES, and the factor
+ * that converts it to the unit the exchange actually prices.
+ *
+ * The same column that is grams for GOLDM and kilograms for COPPER is tonnes for
+ * the three base metals, so `5` — a five-tonne contract — was read as five quoted
+ * units. ZINC's lot came out around ₹2,156: a five-tonne metal contract cheaper
+ * than a single gram of gold petal, and 1,600× smaller in notional than COPPER,
+ * the metal beside it in the same table. Measured, not reasoned: see the notional
+ * of all 33 contracts.
+ *
+ * The quoted unit for these roots is the KILOGRAM, which is why the factor is
+ * 1,000. The tick confirms the quote is per kg — ₹0.05 against a ₹431 price is
+ * 0.012%, normal for a kilogram quote and absurd for a tonne quote, which would
+ * put zinc at ₹0.43/kg.
+ *
+ * Four independent signals agree:
+ *   * COPPER already reports kilograms (2,500 = 2.5 MT) and sits at ₹34.98 L of
+ *     notional. Corrected, ZINC is ₹21.55 L and LEAD ₹9.79 L — the same order.
+ *   * Each mini reports `1`, and MCX's metal minis are one tonne. Read as units,
+ *     a "mini" would be smaller than the contract it miniatures.
+ *   * Corrected, ALUMINIUM (₹17.68 L) and ALUMINI (₹3.54 L) hold the published
+ *     5 MT : 1 MT ratio of 5:1 — but the raw values held 5:1 too, so the ratio
+ *     proves nothing alone. The absolute scale is what fixes it.
+ *   * The alternative prices five tonnes of zinc at ₹2,156.
+ *
+ * Roots deliberately NOT listed, because the evidence is not conclusive:
+ *   * NICKEL — 250 kg is plausible and 250 MT is not, so it is already right.
+ *   * STEELREBAR, COTTONOIL, KAPAS — no live quote to cross-check against. Rebar
+ *     is quoted per tonne (₹10 tick on a ~₹45,000 price), so its `5` is already
+ *     in quoted units. Guessing here would be the same mistake in reverse.
+ *   * BRCRUDEOIL, NATGASIND, ELECMBL, ELECDMBL, GOLDTEN, COTTON, CARDAMOM,
+ *     MENTHAOIL — plausibly correct as they stand.
+ */
+const MASTER_LOT_IN_TONNES: Record<string, number> = {
+  ZINC: 1000,
+  ZINCMINI: 1000,
+  LEAD: 1000,
+  LEADMINI: 1000,
+  ALUMINIUM: 1000,
+  ALUMINI: 1000,
 };
 
 /**
@@ -165,7 +211,14 @@ export function commodityRoot(tradingsymbol: string): string {
  * which roots are quoted in an unusual unit.
  */
 export function quotedUnitsFor(root: string, lotSize: number): number {
-  const override = QUOTED_UNITS_PER_LOT[root];
+  const key = String(root || "").toUpperCase();
+  // Tonnes first. This is a unit CORRECTION rather than a per-root override, so
+  // it must win over the table above and stay independent of it — a root could
+  // plausibly need both one day, and folding them together would hide that.
+  const tonnes = MASTER_LOT_IN_TONNES[key];
+  const override = tonnes
+    ? Number(lotSize) * tonnes
+    : QUOTED_UNITS_PER_LOT[key];
   const n = Number(override ?? lotSize);
   return Number.isFinite(n) && n > 0 ? Math.round(n) : 1;
 }

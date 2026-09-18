@@ -41,7 +41,27 @@ export const COMMODITY_PACK: Record<string, QuotedUnit> = {
   GOLD1G: { each: 1, unit: "g" }, // 1 unit -> 1 g
   GOLDPETAL: { each: 1, unit: "g" }, // 1 unit -> 1 g
   SILVER: { each: 1, unit: "kg" }, // 30 units -> 30 kg
+  // The rest of the silver family, quoted the same way. Their live prices match
+  // SILVER's per-kilogram level, which is what fixes the unit.
+  SILVERM: { each: 1, unit: "kg" }, // 5 units -> 5 kg
+  SILVERMIC: { each: 1, unit: "kg" }, // 1 unit -> 1 kg
+  // SILVER100 quotes about a hundredth of SILVER per unit, so its quoted unit is
+  // 10 g and 100 of them make a kilogram — the same shape as GOLD.
+  SILVER100: { each: 10, unit: "g" }, // 100 units -> 1 kg
   CRUDEOIL: { each: 1, unit: "barrel" }, // 100 units -> 100 barrels
+  CRUDEOILM: { each: 1, unit: "barrel" }, // 10 units -> 10 barrels
+  // Base metals, quoted per kilogram with a tick that is ~0.01% of price —
+  // normal for a kilogram quote, absurd for a tonne one. `quotedUnitsFor`
+  // already converted the master's tonnes (MASTER_LOT_IN_TONNES), so these
+  // arrive in kilograms.
+  COPPER: { each: 1, unit: "kg" }, // 2500 -> 2.5 tonnes
+  ZINC: { each: 1, unit: "kg" }, // 5000 -> 5 tonnes
+  ZINCMINI: { each: 1, unit: "kg" }, // 1000 -> 1 tonne
+  LEAD: { each: 1, unit: "kg" }, // 5000 -> 5 tonnes
+  LEADMINI: { each: 1, unit: "kg" }, // 1000 -> 1 tonne
+  ALUMINIUM: { each: 1, unit: "kg" }, // 5000 -> 5 tonnes
+  ALUMINI: { each: 1, unit: "kg" }, // 1000 -> 1 tonne
+  NICKEL: { each: 1, unit: "kg" }, // 250
 };
 
 /**

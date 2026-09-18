@@ -1011,7 +1011,11 @@ await check("market: calendar serves per-segment sessions", async () => {
 //   * SILVER is also an NSE ETF ticker, and equity-first lookup returned the ETF
 //     against a commodity's lot size;
 //   * MCX's gold family reports a lot size that is neither the quoted unit nor
-//     the contract weight, so GOLD and GOLDM are stated explicitly.
+//     the contract weight, so GOLD and GOLDM are stated explicitly;
+//   * and the three base metals report their weight in TONNES — ZINC, LEAD and
+//     ALUMINIUM all said `5`, which was read as five quoted units. A five-tonne
+//     contract came out at about ₹2,156, cheaper than a single gram of gold
+//     petal, while COPPER beside it sat at ₹34.98 L.
 //
 // Anything here failing means real exposure is being mispriced, not just a label.
 const COMMODITY_EXPECT = {
@@ -1020,7 +1024,11 @@ const COMMODITY_EXPECT = {
   GOLDPETAL: { segment: "MCX", lot: 1 },
   SILVER: { segment: "MCX", lot: 30 },
   CRUDEOIL: { segment: "MCX", lot: 100 },
-  ZINC: { segment: "MCX", lot: 5 },
+  COPPER: { segment: "MCX", lot: 2500 },
+  ZINC: { segment: "MCX", lot: 5000 },
+  LEAD: { segment: "MCX", lot: 5000 },
+  ALUMINIUM: { segment: "MCX", lot: 5000 },
+  ALUMINI: { segment: "MCX", lot: 1000 },
 };
 
 await check(

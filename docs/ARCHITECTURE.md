@@ -173,6 +173,14 @@ question. `app/lib/marketClock.ts` holds the single answer.
   GOLDPETAL all as "GOLD".
 - `lot` means **quoted units per lot**. Quantity is in units end to end; only the
   ticket thinks in lots and multiplies before it posts.
+- ⚠️ **The master's `lot_size` is not one unit, and is not even one kind of unit.**
+  It is grams for GOLDM (100), kilograms for COPPER (2500) and **tonnes** for
+  ZINC, LEAD and ALUMINIUM (5). The gold family is corrected by
+  `QUOTED_UNITS_PER_LOT`; the tonne roots by `MASTER_LOT_IN_TONNES`. Read at face
+  value, `5` priced a five-tonne zinc contract at about ₹2,156 — cheaper than a
+  single gram of gold petal, and 1,600× under COPPER beside it. Bump
+  `MASTER_VERSION` when changing either, or the week-long disk cache serves the
+  old figure.
 - The order gate's atom is the **unit**, not the lot. Fractional lots are allowed
   down to one unit (`trading.fractionalLots`, on by default) because a whole MCX
   gold lot needs roughly ₹7.65 lakh of margin. A fraction of a unit is refused.
@@ -200,11 +208,15 @@ page needs and neither is derivable:
   parent (`ALUMINI`, `NATGAS*`). 33 roots collapse to 17 groups. An unmatched
   root becomes its own family, so a new MCX root is never hidden — the mistake
   `/topmovers` made with a hardcoded universe.
-- **Pack size** — what one lot physically is. Only roots whose quoted unit is
-  **verified** are listed; the rest render the lot as a bare number, because a
-  wrong label is worse than a missing one. ZINC, LEAD and ALUMINIUM report
-  `lot_size` 5, which is five **tonnes** on MCX but reads as 5 units here, so
-  labelling them "5 kg" would be off by a factor of a thousand.
+- **Pack size** — what one lot physically is, e.g. "100 × 10 g = 1 kg". Only
+  roots whose quoted unit is **verified** are listed; the rest render the lot as
+  a bare number, because a wrong label is worse than a missing one. Verification
+  is the same test in every case: the quoted unit must make the tick a plausible
+  fraction of price (gold ₹1 on ₹15,304; zinc ₹0.05 on ₹431) and the resulting
+  notional must sit in the same range as its peers. That is what fixed the
+  tonne-denominated metals and what leaves STEELREBAR, KAPAS, COTTONOIL and
+  GOLDTEN deliberately unlabelled — their quote unit cannot be pinned from the
+  data alone.
 
 The page subscribes **every** contract through `useLiveTicks`, which is what puts
 them on the upstream socket and returns depth/OI. It previously fetched quotes
