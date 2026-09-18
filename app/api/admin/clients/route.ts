@@ -41,6 +41,9 @@ export async function POST(req: NextRequest) {
       kyc: body.kyc,
       note: body.note,
       marginPct: body.marginPct,
+      // "" clears the override back to `inherit`; a junk value is refused by
+      // mutateClient rather than stored as something that reads as inherit.
+      withdrawKyc: body.withdrawKyc,
     },
     { username: dir.username, email: dir.email, clientID: dir.clientID || id },
   );
@@ -74,6 +77,8 @@ export async function POST(req: NextRequest) {
     action: "client.update",
     detail: `${id} ${body.status || ""} ${body.kyc || ""}${
       body.marginPct !== undefined ? ` margin=${body.marginPct}%` : ""
+    }${
+      body.withdrawKyc ? ` withdrawKyc=${String(body.withdrawKyc)}` : ""
     }${body.deposit ? ` deposit=+₹${Number(body.deposit)}` : ""}`.trim(),
     ip: req.headers.get("x-forwarded-for") || "local",
   });

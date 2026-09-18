@@ -297,10 +297,25 @@ export default function FundsPanel(props: { remainingCash: number }) {
               first — withdrawals are paid to an account you have saved, and the
               server needs it before it can send anything.
             </div>
-          ) : !wd.kycEligible ? (
+          ) : wd.kycBlocked ? (
             <div className="text-[12px] text-muted-foreground">
-              Complete KYC to withdraw. It unlocks once your deposits reach the
-              amount set by the operator.
+              {wd.kycSource === "user-required" ? (
+                <>
+                  This account needs KYC before it can withdraw — the platform
+                  has waived it generally, but it is required for you. It
+                  unlocks once your deposits reach{" "}
+                  {money(Number(wd.kycMinDeposit) || 0)}.
+                </>
+              ) : (
+                <>
+                  Complete KYC to withdraw. It unlocks once your deposits reach{" "}
+                  {money(Number(wd.kycMinDeposit) || 0)}
+                  {Number(wd.kycRemaining) > 0 ? (
+                    <> — {money(Number(wd.kycRemaining))} to go</>
+                  ) : null}
+                  .
+                </>
+              )}
             </div>
           ) : (
             <div className="flex flex-wrap gap-1.5">

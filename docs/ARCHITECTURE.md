@@ -285,7 +285,7 @@ is `requested → approved → processing → success`, with `rejected` and `fai
 the two states that **release** the funds (`RELEASED`).
 
 The load-bearing rule is the **hold**. `withdrawnTotal()` sums every withdrawal
-that is *not* released — including a `requested` one nobody has looked at yet —
+that is _not_ released — including a `requested` one nobody has looked at yet —
 and `deriveAccount` subtracts it:
 
 ```
@@ -311,11 +311,11 @@ The approve path is where the money can actually go wrong, so the error
 classification is explicit (`kind` on `GatewayResult`, forwarded by
 `startPayout`):
 
-| Gateway outcome | Meaning | What happens to the request |
-| --- | --- | --- |
-| `auth`, `config` | Our key/secret is wrong, or the rail is off at the provider. **Nothing was sent.** | `reopen()` → back to `requested`, funds stay held, it stays in the queue |
-| `network` (timeout, unreachable) or an **unclassified** 5xx | **The transfer may be in flight.** | Left `approved`, error returns `ambiguous: true`. A human checks the gateway before anyone retries |
-| `refused` (4xx: bad account, below the provider's minimum) | The provider said no to this transfer. Nothing was sent. | `markRejected()` with the gateway's reason, funds released |
+| Gateway outcome                                             | Meaning                                                                            | What happens to the request                                                                        |
+| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `auth`, `config`                                            | Our key/secret is wrong, or the rail is off at the provider. **Nothing was sent.** | `reopen()` → back to `requested`, funds stay held, it stays in the queue                           |
+| `network` (timeout, unreachable) or an **unclassified** 5xx | **The transfer may be in flight.**                                                 | Left `approved`, error returns `ambiguous: true`. A human checks the gateway before anyone retries |
+| `refused` (4xx: bad account, below the provider's minimum)  | The provider said no to this transfer. Nothing was sent.                           | `markRejected()` with the gateway's reason, funds released                                         |
 
 ⚠️ The classified rows must be tested **before** any `status >= 500` check. The
 gateway answers a bad API key with HTTP 502, so a status-first ordering marks a
@@ -334,6 +334,47 @@ Operator actions all live on `/admin` → **Finance** → Pay-outs (the queue, w
 Approve & pay / Reject + reason, and a manual payout that must name an account
 the customer owns — there is no free-text beneficiary anywhere in the console).
 `minWithdraw` / `maxWithdraw` are admin settings, defaults ₹500 / ₹2,00,000.
+
+### Is KYC required to withdraw? Two levels, because the honest answer differs
+
+`app/lib/withdrawKyc.ts` is the whole rule and imports nothing, so the panel and
+the server share one implementation. There is a platform switch —
+`kyc.withdrawRequiresKyc`, **on** by default (Trading & Risk → _Withdrawal KYC_)
+— and a per-user override in Users & KYC of `inherit` | `require` | `waive`.
+
+The override is deliberately **three**-valued. With only a boolean you could say
+"KYC for everyone" or "KYC for nobody", but not "KYC for everyone except this
+one client", which is the real commercial case: a walk-in who paid by cheque,
+a staff account, a customer already verified by hand. `resolveWithdrawKyc()`
+applies it in **both** directions — `waive` still applies while the platform
+demands KYC, and `require` still applies after the platform waived it.
+
+Everything unreadable reads as `inherit`, never as an exemption: a corrupt
+registry value must not become a KYC bypass on a money-out path, and
+`mutateClient` refuses a junk mode rather than storing one that would read back
+as `inherit` and quietly undo the operator's intent.
+
+Two rules that are easy to get wrong and are both load-bearing:
+
+- **The platform answer fails CLOSED**, unlike `kycRequirement()` next to it
+  which fails open. A settings read that throws must not be the reason money
+  leaves without a funding history — the customer can always be let through by
+  hand, whereas a payout cannot be un-sent.
+- **The operator's manual payout obeys the same gate.** A manual payout is still
+  a payout; if it skipped the check, the switch would be advisory and an
+  operator could empty an unverified account by hand. The escape hatch is the
+  stored, audited per-user override — not a bypass inside the payout form.
+
+The queue shows a **KYC WAIVED** badge on any request whose account will be paid
+without KYC, so approving one is a visible act rather than something discovered
+afterwards. `withdrawKycModes()` answers for the whole queue in one registry
+read, using the same pure resolver, so the badge cannot disagree with the
+decision the request itself would get.
+
+⚠️ A partial settings patch must not blank the other KYC field: the route MERGES
+`kyc` with the stored block instead of rebuilding it, because the form patches
+`minDeposit` and `withdrawRequiresKyc` independently and rebuilding from the
+incoming patch alone reads the missing one as 0/false.
 
 ## 4. Backend on workers.dev (non-Upstox data)
 

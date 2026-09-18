@@ -1,4 +1,9 @@
 import { db } from "./db";
+import {
+  isWithdrawKycMode,
+  normalizeWithdrawKyc,
+  type WithdrawKycMode,
+} from "./withdrawKyc";
 
 export type ClientRecord = {
   id: string;
@@ -24,6 +29,18 @@ export type ClientRecord = {
   // Margin requirement for this user's trades, as a % of trade value.
   // 5% ⇒ up to 20x leverage. Unset = use the platform default from settings.
   marginPct?: number;
+  /**
+   * Must THIS user clear the KYC deposit gate before withdrawing?
+   *
+   *   inherit — follow the platform switch (the default for every account)
+   *   require — yes, even where the platform waived it
+   *   waive   — no, even where the platform demands it
+   *
+   * Unset reads as `inherit`, and so does anything unrecognised: a corrupt or
+   * hand-edited value must never become an exemption from KYC on a money-out
+   * path.
+   */
+  withdrawKyc?: WithdrawKycMode;
 };
 
 const MAX = 10000;
@@ -130,7 +147,9 @@ export async function heartbeat(input: {
 
 export async function mutateClient(
   id: string,
-  patch: Partial<Pick<ClientRecord, "status" | "kyc" | "note" | "marginPct">>,
+  patch: Partial<
+    Pick<ClientRecord, "status" | "kyc" | "note" | "marginPct" | "withdrawKyc">
+  >,
   seed?: { username?: string; email?: string; clientID?: string },
 ): Promise<ClientRecord | null> {
   const all = await getClients();
@@ -170,12 +189,23 @@ export async function mutateClient(
     if (!Number.isFinite(n) || n < 1 || n > 100) return null;
     marginPct = Math.round(n * 100) / 100;
   }
+  // An explicit "" clears the override back to `inherit`. Anything else that is
+  // not a real mode is a typo, and is refused rather than stored — storing junk
+  // would read back as `inherit` and quietly undo the operator's intent.
+  let withdrawKyc: WithdrawKycMode | undefined;
+  if (patch.withdrawKyc !== undefined && patch.withdrawKyc !== null) {
+    const raw = String(patch.withdrawKyc).trim().toLowerCase();
+    if (raw === "") withdrawKyc = "inherit";
+    else if (isWithdrawKycMode(raw)) withdrawKyc = raw;
+    else return null;
+  }
   all[i] = {
     ...all[i],
     ...(patch.status ? { status: patch.status } : {}),
     // Stamp the provenance so the heartbeat knows to leave this value alone.
     ...(kyc ? { kyc, kycBy: "operator" as const } : {}),
     ...(marginPct !== undefined ? { marginPct } : {}),
+    ...(withdrawKyc !== undefined ? { withdrawKyc } : {}),
     ...(patch.note !== undefined
       ? { note: String(patch.note).slice(0, 500) }
       : {}),
@@ -194,4 +224,59 @@ export async function marginPctForEmail(email: string): Promise<number | null> {
   const hit = all.find((c) => (c.email || "").toLowerCase() === want);
   const n = Number(hit?.marginPct);
   return Number.isFinite(n) && n >= 1 && n <= 100 ? n : null;
+}
+
+/**
+ * Every override, keyed by id AND by lowercased email.
+ *
+ * Built for the admin queue, which needs the answer for many users at once: one
+ * registry read rather than one per row. Keys are normalised (`u-` stripped)
+ * to match how the ledger addresses an account.
+ */
+export async function withdrawKycModes(): Promise<
+  Map<string, WithdrawKycMode>
+> {
+  const all = await getClients();
+  const out = new Map<string, WithdrawKycMode>();
+  for (const c of all) {
+    const mode = normalizeWithdrawKyc(c.withdrawKyc);
+    if (mode === "inherit") continue;
+    const id = String(c.id || "").replace(/^u-/, "");
+    const cid = String(c.clientID || "").replace(/^u-/, "");
+    const email = String(c.email || "").toLowerCase();
+    if (id) out.set(id, mode);
+    if (cid) out.set(cid, mode);
+    if (email) out.set(email, mode);
+  }
+  return out;
+}
+
+/**
+ * This user's withdrawal-KYC override.
+ *
+ * Matched on the id as well as the email, because a registered account is filed
+ * under `users.id` while an older heartbeat-only row may only carry the address
+ * — and getting `inherit` back when an operator had actually set `waive` would
+ * silently re-impose a gate they had already cleared.
+ */
+export async function withdrawKycFor(opts: {
+  email?: string;
+  /** The `users.id`, with or without the `u-` ledger prefix. */
+  userId?: string;
+}): Promise<WithdrawKycMode> {
+  const email = String(opts?.email || "")
+    .trim()
+    .toLowerCase();
+  const bare = String(opts?.userId || "")
+    .trim()
+    .replace(/^u-/, "");
+  if (!email && !bare) return "inherit";
+  const all = await getClients();
+  const hit = all.find((c) => {
+    const cid = String(c.id || "").replace(/^u-/, "");
+    const cclient = String(c.clientID || "").replace(/^u-/, "");
+    if (bare && (cid === bare || cclient === bare)) return true;
+    return !!email && (c.email || "").toLowerCase() === email;
+  });
+  return normalizeWithdrawKyc(hit?.withdrawKyc);
 }

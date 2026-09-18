@@ -1526,28 +1526,32 @@ await check("withdrawals: unauthorised is refused", async () => {
   return { ok, info: `GET=${g.status} POST=${p.status}` };
 });
 
-await check("withdrawals: a customer sees limits and masked accounts", async () => {
-  const h = { Authorization: "Bearer " + accountToken };
-  const r = await get("/api/withdrawals", h);
-  const j = r.json || {};
-  const fields = ["withdrawable", "minWithdraw", "maxWithdraw", "enabled"];
-  const missing = fields.filter((f) => j[f] === undefined);
-  // A destination may only ever leave the server masked, so no 9-18 digit run
-  // (a bank account number) may appear anywhere in the payload.
-  const rawAccountNumber = /\d{9,18}/.test(JSON.stringify(j));
-  const shaped = (j.accounts || []).every(
-    (a) => a.description && !a.account_number && !a.upi_id,
-  );
-  const ok = r.status === 200 && !missing.length && !rawAccountNumber && shaped;
-  return {
-    ok,
-    info: missing.length
-      ? `missing: ${missing.join(", ")}`
-      : rawAccountNumber
-        ? "a raw account number reached the browser"
-        : `withdrawable=₹${j.withdrawable} min=₹${j.minWithdraw} max=₹${j.maxWithdraw} rail=${j.enabled ? "on" : "off"} accounts=${(j.accounts || []).length}`,
-  };
-});
+await check(
+  "withdrawals: a customer sees limits and masked accounts",
+  async () => {
+    const h = { Authorization: "Bearer " + accountToken };
+    const r = await get("/api/withdrawals", h);
+    const j = r.json || {};
+    const fields = ["withdrawable", "minWithdraw", "maxWithdraw", "enabled"];
+    const missing = fields.filter((f) => j[f] === undefined);
+    // A destination may only ever leave the server masked, so no 9-18 digit run
+    // (a bank account number) may appear anywhere in the payload.
+    const rawAccountNumber = /\d{9,18}/.test(JSON.stringify(j));
+    const shaped = (j.accounts || []).every(
+      (a) => a.description && !a.account_number && !a.upi_id,
+    );
+    const ok =
+      r.status === 200 && !missing.length && !rawAccountNumber && shaped;
+    return {
+      ok,
+      info: missing.length
+        ? `missing: ${missing.join(", ")}`
+        : rawAccountNumber
+          ? "a raw account number reached the browser"
+          : `withdrawable=₹${j.withdrawable} min=₹${j.minWithdraw} max=₹${j.maxWithdraw} rail=${j.enabled ? "on" : "off"} accounts=${(j.accounts || []).length}`,
+    };
+  },
+);
 
 await check(
   "withdrawals: the free balance agrees with the trading ledger",
@@ -1556,7 +1560,8 @@ await check(
     // offering an amount the request will refuse — or worse, more than is there.
     const h = { Authorization: "Bearer " + accountToken };
     const w = (await get("/api/withdrawals", h)).json || {};
-    const t = (await post("/api/trade", { action: "load" }, h)).json?.account || {};
+    const t =
+      (await post("/api/trade", { action: "load" }, h)).json?.account || {};
     const ok =
       Math.abs(Number(w.withdrawable) - Number(t.withdrawable)) < 0.01 &&
       Math.abs(Number(w.withdrawn) - Number(t.withdrawn)) < 0.01;
@@ -1569,7 +1574,8 @@ await check(
 
 await check("withdrawals: a bad request never creates a row", async () => {
   const h = { Authorization: "Bearer " + accountToken };
-  const before = ((await get("/api/withdrawals", h)).json?.withdrawals || []).length;
+  const before = ((await get("/api/withdrawals", h)).json?.withdrawals || [])
+    .length;
   const state = (await get("/api/withdrawals", h)).json || {};
 
   // An unknown destination is refused whatever the rail is doing; if pay-outs
@@ -1579,7 +1585,8 @@ await check("withdrawals: a bad request never creates a row", async () => {
     { amount: 9_000_000, accountId: "not-a-real-account" },
     h,
   );
-  const after = ((await get("/api/withdrawals", h)).json?.withdrawals || []).length;
+  const after = ((await get("/api/withdrawals", h)).json?.withdrawals || [])
+    .length;
   const refused = over.status >= 400;
   const ok = refused && before === after;
   return {
@@ -1590,34 +1597,77 @@ await check("withdrawals: a bad request never creates a row", async () => {
   };
 });
 
-await check("withdrawals: the request path rejects a foreign account", async () => {
-  // Cross-user theft is the failure that matters here: a customer must not be
-  // able to name someone else's saved destination and have the money sent there.
-  const h = { Authorization: "Bearer " + accountToken };
-  const state = (await get("/api/withdrawals", h)).json || {};
-  if (!state.enabled) {
-    // Rail off — the request path is closed entirely, which is the stronger
-    // statement. Report it rather than pretending this proved the ownership rule.
+await check(
+  "withdrawals: the request path rejects a foreign account",
+  async () => {
+    // Cross-user theft is the failure that matters here: a customer must not be
+    // able to name someone else's saved destination and have the money sent there.
+    const h = { Authorization: "Bearer " + accountToken };
+    const state = (await get("/api/withdrawals", h)).json || {};
+    if (!state.enabled) {
+      // Rail off — the request path is closed entirely, which is the stronger
+      // statement. Report it rather than pretending this proved the ownership rule.
+      const r = await post(
+        "/api/withdrawals",
+        { amount: 1000, accountId: "u-00000000/foreign" },
+        h,
+      );
+      return {
+        ok: r.status === 503,
+        info: `rail off — request refused with ${r.status}`,
+      };
+    }
     const r = await post(
       "/api/withdrawals",
       { amount: 1000, accountId: "u-00000000/foreign" },
       h,
     );
     return {
-      ok: r.status === 503,
-      info: `rail off — request refused with ${r.status}`,
+      ok: r.status === 400 && /account/i.test(String(r.json?.error || "")),
+      info: `status=${r.status} error=${JSON.stringify(r.json?.error)}`,
     };
-  }
-  const r = await post(
-    "/api/withdrawals",
-    { amount: 1000, accountId: "u-00000000/foreign" },
-    h,
-  );
+  },
+);
+
+await check("withdrawals: the KYC policy reaches the customer", async () => {
+  // Two levels decide this — a platform switch and a per-user override — and
+  // the customer panel renders its copy from these fields. So the fields have
+  // to be present, and they have to agree with each other: a panel told
+  // "required" while `kycBlocked` says false is a form that offers a withdrawal
+  // the server then refuses.
+  const h = { Authorization: "Bearer " + accountToken };
+  const j = (await get("/api/withdrawals", h)).json || {};
+  const shapes =
+    typeof j.kycRequired === "boolean" &&
+    typeof j.kycBlocked === "boolean" &&
+    typeof j.kycEligible === "boolean";
+  const sources = ["site", "user-required", "user-waived"];
+  const sourced = sources.includes(j.kycSource);
+  const agrees = j.kycBlocked === (j.kycRequired && !j.kycEligible);
   return {
-    ok: r.status === 400 && /account/i.test(String(r.json?.error || "")),
-    info: `status=${r.status} error=${JSON.stringify(r.json?.error)}`,
+    ok: shapes && sourced && agrees,
+    info: !shapes
+      ? `missing/ill-typed: required=${j.kycRequired} blocked=${j.kycBlocked} eligible=${j.kycEligible}`
+      : !sourced
+        ? `unexpected source: ${j.kycSource}`
+        : !agrees
+          ? `blocked=${j.kycBlocked} but required=${j.kycRequired} eligible=${j.kycEligible}`
+          : `required=${j.kycRequired} (${j.kycSource}) eligible=${j.kycEligible} blocked=${j.kycBlocked}`,
   };
 });
+
+await check(
+  "withdrawals: the KYC switch cannot move without a session",
+  async () => {
+    // The switch decides whether money can leave an unverified account, so a
+    // signed-out caller must not be able to flip it. The settings route is
+    // superadmin-only; this proves the gate is actually reached.
+    const r = await post("/api/admin/settings", {
+      kyc: { withdrawRequiresKyc: false },
+    });
+    return { ok: r.status >= 400, info: `status=${r.status}` };
+  },
+);
 
 console.log("\n─── smoke results ───");
 for (const line of results) console.log(line);

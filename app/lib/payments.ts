@@ -537,7 +537,12 @@ export async function startPayout(input: {
       kind: "config",
     };
   if (!cfg.payoutsEnabled)
-    return { ok: false, error: "Payouts are switched off", status: 503, kind: "config" };
+    return {
+      ok: false,
+      error: "Payouts are switched off",
+      status: 503,
+      kind: "config",
+    };
   if (!railConfigured(cfg, "payout"))
     return {
       ok: false,
@@ -737,7 +742,10 @@ export async function payOutWithdrawal(
     // caught by the status check: the gateway answers a bad key with 502, and
     // treating that as "maybe it was sent" would hold the customer's money on
     // the strength of an error that says the opposite.
-    if (res.kind === "network" || (res.kind === undefined && res.status >= 500)) {
+    if (
+      res.kind === "network" ||
+      (res.kind === undefined && res.status >= 500)
+    ) {
       // Ambiguous: the transfer may be in flight, so a human has to look before
       // anyone retries. Releasing the funds here is how someone gets paid twice.
       return {

@@ -620,6 +620,21 @@ export default function FinanceSection({
                       </td>
                       <td className={`${tdCls} text-[12px]`}>
                         {w.destination}
+                        {/* Paid out with the KYC gate deliberately not applied.
+                            An operator should see that before approving, not
+                            discover it afterwards. */}
+                        {w.kycWaived ? (
+                          <span
+                            title={
+                              w.kycMode === "inherit"
+                                ? "The platform switch waives KYC for everyone — no KYC was required for this request."
+                                : "This account is exempted from withdrawal KYC — no KYC was required for this request."
+                            }
+                            className="ml-2 rounded border border-warning/40 bg-warning/10 px-1.5 py-0.5 font-sans text-[10px] font-bold tracking-wide text-warning"
+                          >
+                            KYC WAIVED
+                          </span>
+                        ) : null}
                       </td>
                       <td className={`${tdCls} text-right`}>
                         {rejectId === w.id ? (

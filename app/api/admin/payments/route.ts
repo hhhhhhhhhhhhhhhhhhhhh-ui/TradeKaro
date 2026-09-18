@@ -4,7 +4,13 @@ import { audit } from "@/app/lib/adminStore";
 import { runtimeSettings } from "@/app/lib/adminRuntime";
 import { sunpayConfig } from "@/app/lib/sunpay";
 import { depositedTotal } from "@/app/lib/deposits";
-import { accountKey, publicAccount } from "@/app/lib/tradingServer";
+import {
+  accountKey,
+  publicAccount,
+  withdrawKycSiteRequired,
+} from "@/app/lib/tradingServer";
+import { withdrawKycModes } from "@/app/lib/clientRegistry";
+import { resolveWithdrawKyc } from "@/app/lib/withdrawKyc";
 import { findDirectoryUser } from "@/app/lib/directory";
 import { accountsFor, describeAccount } from "@/app/lib/payoutAccounts";
 import {
@@ -104,6 +110,35 @@ async function withdrawableFor(id: string): Promise<number> {
   return Number(acct.withdrawable) || 0;
 }
 
+/**
+ * Which queued requests would be paid out WITHOUT KYC.
+ *
+ * Worth surfacing rather than hiding in a setting: approving money out of an
+ * unverified account should be a visible, deliberate act, not something an
+ * operator discovers afterwards. One registry read for the whole queue, and the
+ * same pure resolver the gate uses, so the badge cannot disagree with the
+ * decision the request itself would get.
+ */
+async function kycFlags(
+  rows: { user_id: string }[],
+): Promise<Map<string, { required: boolean; mode: string }>> {
+  const out = new Map<string, { required: boolean; mode: string }>();
+  if (!rows.length) return out;
+  const [modes, site] = await Promise.all([
+    withdrawKycModes(),
+    withdrawKycSiteRequired(),
+  ]);
+  for (const r of rows) {
+    const bare = String(r.user_id || "").replace(/^u-/, "");
+    const mode = modes.get(bare) || modes.get(bare.toLowerCase()) || "inherit";
+    out.set(r.user_id, {
+      required: resolveWithdrawKyc(mode, site).required,
+      mode,
+    });
+  }
+  return out;
+}
+
 export async function GET(req: NextRequest) {
   const a = await adminFrom(req);
   if (!a) return deny();
@@ -120,6 +155,21 @@ export async function GET(req: NextRequest) {
   const userId = new URL(req.url).searchParams.get("id") || "";
   const key = userId ? accountKey(userId) : "";
 
+  // Oldest first: an operator should work a queue, not a stack.
+  const queueRows = decorate(pendingWithdrawals(100));
+  const flags = await kycFlags(queueRows as { user_id: string }[]);
+  const queue = queueRows.map((r: any) => {
+    const f = flags.get(String(r.user_id));
+    return {
+      ...r,
+      // `kycWaived` means the gate deliberately did not apply to this account
+      // — either the platform waived it or this user is exempted. Show it, so
+      // nobody approves an unverified pay-out by accident.
+      kycWaived: f ? !f.required : false,
+      kycMode: f?.mode || "inherit",
+    };
+  });
+
   return NextResponse.json({
     status,
     counts: counts(),
@@ -133,8 +183,7 @@ export async function GET(req: NextRequest) {
     balanceError: bal && !bal.ok ? bal.error : null,
 
     // ── withdrawals ──
-    // Oldest first: an operator should work a queue, not a stack.
-    queue: decorate(pendingWithdrawals(100)),
+    queue,
     withdrawals: decorate(allWithdrawals(200)),
     withdrawalSummary: withdrawalSummary(),
     /** Virtual capital that was seeded before the switch to real money. */
@@ -204,8 +253,29 @@ export async function POST(req: NextRequest) {
     const userId = String(body?.id || "");
     if (!userId)
       return NextResponse.json({ error: "id required" }, { status: 400 });
-    if (!(await findDirectoryUser(userId)))
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+    const dir = await findDirectoryUser(userId);
+    if (!dir) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    // The SAME policy as the customer form, deliberately.
+    //
+    // A manual payout is still a payout, and if this path skipped the gate then
+    // the gate would be advisory — an operator could empty an unverified
+    // account by hand. The escape hatch is the stored per-user override in
+    // Users & KYC, which is audited, rather than a bypass inside the payout form.
+    const acct = await publicAccount(accountKey(userId), dir.email);
+    if (acct.withdrawKycRequired && !acct.kycEligible)
+      return NextResponse.json(
+        {
+          error:
+            `KYC is required for this account — it unlocks at ₹${Number(
+              acct.kycMinDeposit,
+            ).toLocaleString(
+              "en-IN",
+            )} deposited. To pay anyway, set this user's ` +
+            `withdrawal KYC to "Not required for this user" in Users & KYC.`,
+        },
+        { status: 403 },
+      );
 
     const s = await runtimeSettings();
     const made = requestWithdrawal({

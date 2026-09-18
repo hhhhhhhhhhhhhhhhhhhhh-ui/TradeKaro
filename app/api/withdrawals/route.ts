@@ -57,6 +57,14 @@ export async function GET(req: NextRequest) {
     enabled:
       s.payments?.payoutsEnabled === true && s.payments?.enabled === true,
     kycEligible: acct.kycEligible,
+    /** KYC required for THIS account, after the per-user override. */
+    kycRequired: acct.withdrawKycRequired,
+    /** "site" | "user-required" | "user-waived" — drives the customer copy. */
+    kycSource: acct.withdrawKycSource,
+    /** Are withdrawals actually possible right now (KYC gate included)? */
+    kycBlocked: acct.withdrawKycRequired && !acct.kycEligible,
+    kycMinDeposit: acct.kycMinDeposit,
+    kycRemaining: acct.kycRemaining,
     accounts: accountsFor(key).map((a) => ({
       id: a.id,
       kind: a.kind,
@@ -86,7 +94,11 @@ export async function POST(req: NextRequest) {
 
   // KYC first: an unverified account asking a stranger to send money to a bank
   // account is the shape of every payout fraud, and the gate already exists.
-  if (!acct.kycEligible)
+  //
+  // `acct.withdrawKycRequired` is the RESOLVED answer — the platform switch with
+  // this account's override already applied — so an operator who waived KYC for
+  // one client lets that client through even while the platform requires it.
+  if (acct.withdrawKycRequired && !acct.kycEligible)
     return NextResponse.json(
       {
         error: `Complete KYC before withdrawing — it unlocks at ₹${Number(

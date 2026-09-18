@@ -94,6 +94,15 @@ export type AdminSettings = {
   kyc: {
     /** Minimum total deposits before KYC can be completed. 0 = open to all. */
     minDeposit: number;
+    /**
+     * The PLATFORM answer to "must a withdrawal clear KYC?".
+     *
+     * On by default because the deposit gate is the only anti-fraud control on a
+     * money-out path: without it, an account can be funded and emptied again
+     * before any paperwork exists. Individual accounts can be exempted either
+     * way in Users & KYC — the override always beats this switch.
+     */
+    withdrawRequiresKyc: boolean;
   };
   /**
    * Sunpays payment gateway.
@@ -198,7 +207,7 @@ export const DEFAULT_SETTINGS: AdminSettings = {
   },
   orderDefaults: { defaultQty: 1, confirmOrders: true },
   alertLimits: { maxPerUser: 20 },
-  kyc: { minDeposit: 25000 },
+  kyc: { minDeposit: 25000, withdrawRequiresKyc: true },
   payments: {
     enabled: false,
     payinApiKey: "",

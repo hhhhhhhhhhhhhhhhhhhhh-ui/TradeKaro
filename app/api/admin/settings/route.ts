@@ -74,9 +74,22 @@ export async function POST(req: NextRequest) {
   for (const k of allow) if (body[k] !== undefined) (next as any)[k] = body[k];
   // The KYC requirement is money: force it to a whole, non-negative number so a
   // stray string or negative cannot disable the gate from the settings form.
+  //
+  // MERGED with the stored block, never rebuilt: the form patches `minDeposit`
+  // and `withdrawRequiresKyc` independently, so rebuilding from the incoming
+  // patch alone would read the missing field as 0/false and silently switch the
+  // other one off.
   if ((next as any).kyc) {
+    const inc = (next as any).kyc || {};
+    const curKyc = (cur as any)?.kyc || {};
     (next as any).kyc = {
-      minDeposit: normalizeMinDeposit((next as any).kyc.minDeposit),
+      minDeposit: normalizeMinDeposit(
+        inc.minDeposit !== undefined ? inc.minDeposit : curKyc.minDeposit,
+      ),
+      withdrawRequiresKyc:
+        typeof inc.withdrawRequiresKyc === "boolean"
+          ? inc.withdrawRequiresKyc
+          : curKyc.withdrawRequiresKyc === true,
     };
   }
   // Reject corrupted shapes: top-level switches must stay bare booleans.

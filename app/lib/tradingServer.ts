@@ -5,6 +5,12 @@ import { marginPctForEmail } from "./clientRegistry";
 import { withdrawnTotal } from "./withdrawals";
 import { depositedTotal } from "./deposits";
 import { kycGate, normalizeMinDeposit } from "./kycGate";
+import { withdrawKycFor } from "./clientRegistry";
+import {
+  resolveWithdrawKyc,
+  type KycResolution,
+  type WithdrawKycMode,
+} from "./withdrawKyc";
 import { cached } from "./marketCache";
 import {
   EQUITY_EXCHANGE,
@@ -178,6 +184,40 @@ export async function kycRequirement(): Promise<number> {
   } catch {
     return 0;
   }
+}
+
+/**
+ * The PLATFORM answer to "must a withdrawal clear KYC?"
+ *
+ * Fails CLOSED, unlike `kycRequirement` above. A settings read that throws must
+ * not be the reason money leaves without a funding history — and the customer
+ * can always be let through by hand, whereas a payout cannot be un-sent.
+ */
+export async function withdrawKycSiteRequired(): Promise<boolean> {
+  try {
+    const rs = await runtimeSettings();
+    return rs.kyc?.withdrawRequiresKyc !== false;
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * This account's withdrawal-KYC policy, override first.
+ *
+ * The single place the two levels are combined, so the withdrawal route, the
+ * admin queue and the customer panel cannot disagree about whether a gate is on.
+ */
+export async function withdrawKycPolicy(opts: {
+  email?: string | null;
+  /** The `u-<id>` ledger key. */
+  key?: string;
+}): Promise<KycResolution & { mode: WithdrawKycMode; site: boolean }> {
+  const [mode, site] = await Promise.all([
+    withdrawKycFor({ email: opts.email || undefined, userId: opts.key }),
+    withdrawKycSiteRequired(),
+  ]);
+  return { ...resolveWithdrawKyc(mode, site), mode, site };
 }
 
 /**
@@ -1258,6 +1298,10 @@ export async function publicAccount(key: string, email?: string | null) {
   // The KYC gate is computed server-side for the same reason the ledger is: a
   // browser that could decide it is eligible is not a gate at all.
   const gate = kycGate(a.deposited, await kycRequirement());
+  // Whether KYC is *required to withdraw* is a separate question from whether
+  // the deposit gate is cleared: the platform can waive it, and one account can
+  // be exempted from (or held to) the rule regardless of the platform.
+  const wk = await withdrawKycPolicy({ email, key });
   const r2 = (n: number) => Math.round(n * 100) / 100;
   return {
     startCash: r2(a.startCash),
@@ -1283,5 +1327,12 @@ export async function publicAccount(key: string, email?: string | null) {
     kycMinDeposit: gate.required,
     kycEligible: gate.eligible,
     kycRemaining: r2(gate.remaining),
+    /** Must this account clear KYC before a withdrawal? (override already applied) */
+    withdrawKycRequired: wk.required,
+    /** Where that answer came from: "site" | "user-required" | "user-waived". */
+    withdrawKycSource: wk.source,
+    withdrawKycMode: wk.mode,
+    /** The platform switch, for the console copy. */
+    withdrawKycSite: wk.site,
   };
 }

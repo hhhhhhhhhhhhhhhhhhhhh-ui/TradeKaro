@@ -25,6 +25,11 @@ import {
   kycGate,
   normalizeMinDeposit,
 } from "@/app/lib/kycGate";
+import {
+  normalizeWithdrawKyc,
+  WITHDRAW_KYC_MODES,
+  withdrawKycLabel,
+} from "@/app/lib/withdrawKyc";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
 import FinanceSection from "./sections/FinanceSection";
 import {
@@ -1291,6 +1296,47 @@ export default function AdminPage() {
                       funding first.
                     </>
                   )}
+                </Callout>
+              </Card>
+              <Card
+                title="Withdrawal KYC"
+                sub="Whether a customer has to clear KYC before money can be sent out of their account."
+              >
+                {toggle(
+                  "Require KYC for withdrawals",
+                  "kyc.withdrawRequiresKyc",
+                  s.kyc?.withdrawRequiresKyc
+                    ? "ON — an account below the deposit threshold cannot request a pay-out"
+                    : "OFF — anyone with a free balance can request a pay-out, KYC or not",
+                )}
+                <Callout tone={s.kyc?.withdrawRequiresKyc ? "info" : "warn"}>
+                  {s.kyc?.withdrawRequiresKyc ? (
+                    <>
+                      Applies to the whole platform, <strong>except</strong>{" "}
+                      accounts you exempt individually. On a money-out path this
+                      is the only control that ties a pay-out to a funding
+                      history — without it an account can be funded and emptied
+                      again before any paperwork exists.
+                    </>
+                  ) : (
+                    <>
+                      This is the loosest setting: <strong>any</strong> account
+                      with a free balance can withdraw, including one that has
+                      never completed KYC. The deposit requirement above still
+                      governs who may <em>complete</em> KYC — it just no longer
+                      stands between a customer and their money.
+                    </>
+                  )}
+                </Callout>
+                <Callout tone="info">
+                  This switch is the <strong>platform default</strong>. Each
+                  account can be set to <em>Always require</em>,{" "}
+                  <em>Never require</em> or <em>Follow the platform setting</em>{" "}
+                  in <strong>Users &amp; KYC</strong> → open a user →{" "}
+                  <em>Withdrawal KYC</em>. A per-user choice always wins, in
+                  both directions, so you can waive it for one verified client
+                  while the platform demands it — or keep it for one account
+                  after switching it off for everyone.
                 </Callout>
               </Card>
               <Card
@@ -3501,6 +3547,42 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                     The deposit needed to open a position. 5% ⇒ up to 20x
                     leverage, 20% ⇒ 5x, 100% ⇒ no leverage. Applies to this user
                     only, and is enforced server-side on every fill.
+                  </div>
+                  <Field
+                    label={`Withdrawal KYC — ${withdrawKycLabel(sel.withdrawKyc)}`}
+                  >
+                    <div className="grid grid-cols-3 gap-1.5">
+                      {WITHDRAW_KYC_MODES.map((m) => {
+                        const on = normalizeWithdrawKyc(sel.withdrawKyc) === m;
+                        const short =
+                          m === "inherit"
+                            ? "Site default"
+                            : m === "require"
+                              ? "Always"
+                              : "Never";
+                        return (
+                          <button
+                            key={m}
+                            disabled={!canEdit || selBusy || on}
+                            onClick={() => act(sel.id, { withdrawKyc: m })}
+                            className={`min-h-[36px] rounded-lg border px-2 text-[12px] font-semibold disabled:opacity-60 ${on ? "border-brand/40 bg-brand/10 text-foreground" : "border-border bg-card text-muted-foreground"}`}
+                          >
+                            {short}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Field>
+                  <div className="text-[11px] leading-relaxed text-muted-foreground">
+                    Does <strong>this</strong> account have to clear KYC before
+                    a withdrawal? <em>Site default</em> follows the platform
+                    switch in Trading &amp; Risk → <em>Withdrawal KYC</em>.{" "}
+                    <em>Always</em> and <em>Never</em> override it for this user
+                    alone, in either direction — so you can let one client
+                    through while the platform demands KYC, or hold one account
+                    to it after switching it off for everyone. Enforced
+                    server-side on the withdrawal request, and recorded in the
+                    audit log.
                   </div>
                   {(() => {
                     // One place for the deposit picture: what they have funded,

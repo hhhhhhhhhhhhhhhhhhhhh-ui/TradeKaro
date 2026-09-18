@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { getClients, type ClientRecord } from "./clientRegistry";
 import { depositedTotals } from "./deposits";
+import { normalizeWithdrawKyc, type WithdrawKycMode } from "./withdrawKyc";
 
 // ── Unified client directory ────────────────────────────────────────────────
 //
@@ -23,6 +24,11 @@ export type DirectoryUser = {
   clientCode: string;
   panLast4: string;
   kyc: string;
+  /**
+   * This user's withdrawal-KYC override: `inherit` | `require` | `waive`.
+   * `inherit` means the platform switch decides — see `withdrawKyc.ts`.
+   */
+  withdrawKyc: WithdrawKycMode;
   status: "ACTIVE" | "FROZEN";
   note: string;
   cash?: number;
@@ -73,6 +79,7 @@ function emptyFromUser(u: UserRow): DirectoryUser {
     clientCode: String(u.client_code || ""),
     panLast4: "",
     kyc: "UNKNOWN",
+    withdrawKyc: "inherit",
     status: "ACTIVE",
     note: "",
     deposited: 0,
@@ -98,6 +105,7 @@ function fromHeartbeat(r: ClientRecord): DirectoryUser {
     clientCode: "",
     panLast4: String(r.panLast4 || ""),
     kyc: String(r.kyc || "UNKNOWN"),
+    withdrawKyc: normalizeWithdrawKyc(r.withdrawKyc),
     status: r.status === "FROZEN" ? "FROZEN" : "ACTIVE",
     note: String(r.note || ""),
     cash: typeof r.cash === "number" ? r.cash : undefined,
