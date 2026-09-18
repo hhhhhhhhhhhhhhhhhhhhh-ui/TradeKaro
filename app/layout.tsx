@@ -43,14 +43,14 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
   ),
-  title: "TradeKaro",
+  title: "TradeStox",
   description:
     "Indian stock market analysis and trading — live NSE/BSE quotes, charts, options chain and portfolio tracking.",
-  applicationName: "TradeKaro",
+  applicationName: "TradeStox",
   openGraph: {
     type: "website",
-    siteName: "TradeKaro",
-    title: "TradeKaro — Indian market analysis & trading",
+    siteName: "TradeStox",
+    title: "TradeStox — Indian market analysis & trading",
     description:
       "Live NSE/BSE quotes, charts, options chain and a complete trading account.",
   },

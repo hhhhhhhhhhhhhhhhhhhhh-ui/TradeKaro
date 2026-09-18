@@ -154,7 +154,7 @@ export default function SignUpPage() {
         password: hashed,
       });
       if (login?.status === 200) {
-        sileo.success({ title: `Welcome to TradeKaro, ${uname}` });
+        sileo.success({ title: `Welcome to TradeStox, ${uname}` });
         // Full load rather than router.replace(): the same router-cache
         // problem as the login page. A cached signed-out redirect would
         // bounce them straight back off /dashboard and leave them staring at
@@ -179,12 +179,12 @@ export default function SignUpPage() {
         <div className="relative max-w-md">
           <div className="flex items-center gap-2.5">
             <img
-              src="/TradeKaroLogo.png"
+              src="/TradeStoxLogo.png"
               alt=""
               className="h-8 w-8 rounded-lg"
             />
             <span className="text-[15px] font-semibold tracking-tight">
-              TradeKaro
+              TradeStox
             </span>
           </div>
 
@@ -226,12 +226,12 @@ export default function SignUpPage() {
           <div className="mb-7 lg:hidden">
             <div className="flex items-center gap-2.5">
               <img
-                src="/TradeKaroLogo.png"
+                src="/TradeStoxLogo.png"
                 alt=""
                 className="h-8 w-8 rounded-lg"
               />
               <span className="text-[15px] font-semibold tracking-tight">
-                TradeKaro
+                TradeStox
               </span>
             </div>
             <p className="mt-2.5 text-[12.5px] text-muted-foreground">

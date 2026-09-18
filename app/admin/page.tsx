@@ -772,7 +772,7 @@ export default function AdminPage() {
           </div>
           <div className="min-w-0">
             <div className="truncate text-[14px] font-bold tracking-tight text-foreground">
-              TradeKaro Admin
+              TradeStox Admin
             </div>
             <div className="text-[11px] text-muted-foreground">
               Operations · Risk · Access
@@ -1816,7 +1816,7 @@ export default function AdminPage() {
                   T
                 </div>
                 <div className="text-[14px] font-bold text-foreground">
-                  TradeKaro Admin
+                  TradeStox Admin
                 </div>
               </div>
               <button

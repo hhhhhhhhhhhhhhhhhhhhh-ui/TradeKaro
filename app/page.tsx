@@ -36,7 +36,7 @@ export default function Home() {
           </h1>
 
           <p className="text-base sm:text-lg text-foreground/60 max-w-xl mb-8 sm:mb-10 leading-relaxed">
-            TradeKaro is a free, open-source trading terminal for NSE. Trade on
+            TradeStox is a free, open-source trading terminal for NSE. Trade on
             live data from 2000+ stocks — build your strategy, place orders, and
             track P&amp;L in real time.
           </p>

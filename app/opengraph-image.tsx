@@ -5,7 +5,7 @@ import { ImageResponse } from "next/og";
 // font has no rupee glyph, which would render as a tofu box.
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
-export const alt = "TradeKaro — Indian market analysis and trading";
+export const alt = "TradeStox — Indian market analysis and trading";
 
 export default function OpengraphImage() {
   return new ImageResponse(
@@ -48,7 +48,7 @@ export default function OpengraphImage() {
             letterSpacing: -0.5,
           }}
         >
-          TradeKaro
+          TradeStox
         </div>
       </div>
 

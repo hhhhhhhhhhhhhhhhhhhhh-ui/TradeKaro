@@ -176,11 +176,11 @@ export default function NavbarDesktop(props: any) {
             href="/"
           >
             <img
-              src="/TradeKaroLogo.png"
-              alt="TradeKaro Logo"
+              src="/TradeStoxLogo.png"
+              alt="TradeStox Logo"
               className="h-8 !rounded-md"
             />
-            <span className="ml-2 font-medium text-foreground">TradeKaro</span>
+            <span className="ml-2 font-medium text-foreground">TradeStox</span>
           </NavTransition>
           <div className="flex flex-row items-center gap-2">
             {/* Market status pill */}

@@ -1,11 +1,11 @@
 import type { MetadataRoute } from "next";
 
-// Web app manifest — makes TradeKaro installable from the browser
+// Web app manifest — makes TradeStox installable from the browser
 // (Add to Home Screen on mobile, Install on desktop).
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "TradeKaro — Indian market analysis & trading",
-    short_name: "TradeKaro",
+    name: "TradeStox — Indian market analysis & trading",
+    short_name: "TradeStox",
     description:
       "Live NSE/BSE quotes, charts, options chain and a complete trading terminal.",
     start_url: "/",

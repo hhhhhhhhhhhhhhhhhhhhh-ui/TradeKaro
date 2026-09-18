@@ -25,13 +25,13 @@ export default function Footer() {
         <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-2.5">
             <img
-              src="/TradeKaroLogo.png"
+              src="/TradeStoxLogo.png"
               alt=""
               className="h-8 w-8 rounded-lg"
             />
             <div>
               <div className="text-[14px] font-semibold tracking-tight">
-                TradeKaro
+                TradeStox
               </div>
               <div className="text-[11.5px] text-muted-foreground">
                 NSE/BSE market analysis &amp; trading terminal
@@ -55,15 +55,24 @@ export default function Footer() {
         </div>
 
         {/* The disclosure. Short on purpose: one clear statement beats a wall of
-            small print nobody reads. */}
+            small print nobody reads.
+
+            ⚠️ It has to be TRUE. This platform takes real money in and pays
+            real money out through a payment gateway, while order execution is
+            simulated on our own book. The old "no real funds are held or
+            moved … simulated credits for evaluation only" text stopped being
+            true the moment the payment rail went live, and a false risk
+            disclosure is worse than none at all — it is also the kind of claim
+            a regulator reads as misrepresentation of the product. */}
         <p className="mt-6 rounded-lg border border-border bg-muted/40 px-3.5 py-3 text-[11.5px] leading-relaxed text-muted-foreground">
           <span className="font-semibold text-foreground">
-            Demo environment.
+            Real money, simulated execution.
           </span>{" "}
-          Market data is live, but no orders are placed with any exchange or
-          broker and no real funds are held or moved. Balances and deposits on
-          this platform are simulated credits for evaluation only, and nothing
-          here is investment advice. See{" "}
+          Wallet deposits and withdrawals are real funds, collected and paid out
+          through our payment partner. Orders are matched on our own book and
+          are never placed with an exchange or broker, so positions and trading
+          profit or loss are notional and do not reduce or increase your wallet
+          balance. Nothing here is investment advice. See{" "}
           <NavTransition
             href="/terms"
             className="font-medium text-foreground underline underline-offset-2"
@@ -75,7 +84,7 @@ export default function Footer() {
 
         <div className="mt-5 flex flex-col gap-1 text-[11px] text-muted-foreground/70 sm:flex-row sm:items-center sm:justify-between">
           <span>
-            © {new Date().getFullYear()} TradeKaro. Market data via Upstox.
+            © {new Date().getFullYear()} TradeStox. Market data via Upstox.
           </span>
           <span>
             Prices are indicative and may differ from the exchange feed.

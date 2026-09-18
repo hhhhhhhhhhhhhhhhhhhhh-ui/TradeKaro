@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Console · TradeKaro Admin",
+  title: "Console · TradeStox Admin",
   description: "Restricted operations console.",
   robots: { index: false, follow: false },
 };

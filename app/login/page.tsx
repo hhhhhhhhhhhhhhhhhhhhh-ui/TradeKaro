@@ -161,12 +161,12 @@ function LoginContent() {
         <div className="relative max-w-md">
           <div className="flex items-center gap-2.5">
             <img
-              src="/TradeKaroLogo.png"
+              src="/TradeStoxLogo.png"
               alt=""
               className="h-8 w-8 rounded-lg"
             />
             <span className="text-[15px] font-semibold tracking-tight">
-              TradeKaro
+              TradeStox
             </span>
           </div>
           <h2 className="mt-8 text-[30px] font-bold leading-[1.15] tracking-tight">
@@ -187,12 +187,12 @@ function LoginContent() {
           <div className="mb-7 lg:hidden">
             <div className="flex items-center gap-2.5">
               <img
-                src="/TradeKaroLogo.png"
+                src="/TradeStoxLogo.png"
                 alt=""
                 className="h-8 w-8 rounded-lg"
               />
               <span className="text-[15px] font-semibold tracking-tight">
-                TradeKaro
+                TradeStox
               </span>
             </div>
           </div>

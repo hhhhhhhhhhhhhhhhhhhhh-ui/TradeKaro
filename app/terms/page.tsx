@@ -2,29 +2,46 @@ import type { Metadata } from "next";
 import { NavTransition } from "@/app/components/navbar/NavTransition";
 
 export const metadata: Metadata = {
-  title: "Terms & risk disclosure · TradeKaro",
+  title: "Terms & risk disclosure · TradeStox",
   description:
-    "What TradeKaro is, what it is not, and the risks of acting on market data.",
+    "What TradeStox is, what it is not, and the risks of acting on market data.",
 };
 
 // Public, no auth. This page exists so the platform can describe itself
 // accurately in one place while every product surface uses ordinary trading
 // language. Keep it in step with components/Footer.tsx.
+//
+// ⚠️ What it must NOT say again: "no funds are held, pooled or transferred …
+// simulated credits … no money moves into or out of this platform". That was
+// true while the product was a pure simulator. The payment rail is live, so
+// real money is now collected and paid out, and those sentences became a false
+// description of the product — the one kind of error a risk disclosure cannot
+// make. What IS still simulated is order execution, and that is now stated
+// separately and precisely.
 
 const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "What this platform is",
     body: [
-      "TradeKaro is a market analysis and trading simulator for NSE/BSE securities. It streams live market data, lets you build watchlists, place orders into a simulated account, and track positions and profit and loss exactly as a trading terminal does.",
-      "It exists to let you evaluate a strategy against real prices without committing capital.",
+      "TradeStox is a market analysis and trading platform for NSE/BSE securities. It streams live market data, lets you build watchlists, place orders, and track positions and profit and loss exactly as a trading terminal does.",
+      "It has two sides, and the difference matters. Your wallet holds real money: you add funds and withdraw them through a payment partner. Your trading book is simulated — orders are matched internally against live prices and are never sent to an exchange or a broker.",
     ],
   },
   {
     title: "What this platform is not",
     body: [
-      "TradeKaro is not a stock broker, exchange member, depository participant or investment adviser. It is not registered with SEBI, and it does not place, route or execute orders on any exchange.",
-      "No funds are held, pooled or transferred. Balances, deposits and payouts shown in the product are simulated credits used to model trading; no money moves into or out of this platform.",
+      "TradeStox is not a stock broker, exchange member, depository participant or investment adviser. It is not registered with SEBI, and it does not place, route or execute orders on any exchange.",
       "Nothing on this platform is investment advice, a recommendation, or an offer to buy or sell any security.",
+      "Trading results are notional. Because the book is simulated, profit and loss on it does not increase or reduce the money in your wallet.",
+    ],
+  },
+  {
+    title: "Deposits and withdrawals",
+    body: [
+      "Money you add is collected by a third-party payment gateway and credited to your wallet only once that gateway confirms the payment. Funds are credited from that confirmation and never on the strength of anything your browser reports.",
+      "Withdrawals are paid to the UPI ID or bank account you have saved, and may be subject to a minimum amount, identity verification and review before they are sent.",
+      "Real funds in your wallet are held by the platform until you withdraw them. They are not covered by any deposit insurance, investor protection scheme or exchange guarantee.",
+      "Deposits and withdrawals are subject to limits set on the platform, and we may refuse or reverse a transaction that fails a verification check.",
     ],
   },
   {
@@ -36,16 +53,16 @@ const SECTIONS: { title: string; body: string[] }[] = [
     ],
   },
   {
-    title: "Simulated results",
+    title: "Simulated execution",
     body: [
-      "Simulated performance is not a reliable indicator of future results. A simulated account cannot reproduce the effect of real market liquidity, execution delays, slippage or the psychology of risking your own money.",
+      "Every fill on this platform is simulated. A simulated book cannot reproduce the effect of real market liquidity, execution delays, slippage or the psychology of risking your own money, so results here are not a reliable indicator of how a strategy would have performed for real.",
       "Past performance, whether simulated or real, never guarantees future outcomes.",
     ],
   },
   {
-    title: "Risk of real trading",
+    title: "Risk of trading",
     body: [
-      "Trading and investing in securities carries risk, including the risk of losing your entire capital. Leveraged and intraday positions can lose more than the amount deposited.",
+      "Trading and investing in securities carries risk, including the risk of losing your capital. Leveraged and intraday positions can lose more than the amount committed.",
       "Derivatives such as options and futures are complex instruments and are not suitable for every investor. Please read the exchange-issued risk disclosure documents and, where relevant, consult a SEBI-registered investment adviser before trading with real money.",
     ],
   },
@@ -66,7 +83,7 @@ export default function TermsPage() {
           Terms &amp; risk disclosure
         </h1>
         <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground">
-          Please read this before using TradeKaro. By using the platform you
+          Please read this before using TradeStox. By using the platform you
           accept the terms below.
         </p>
 

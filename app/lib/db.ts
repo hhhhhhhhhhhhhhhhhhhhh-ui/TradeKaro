@@ -338,7 +338,30 @@ function backfillClientCodes(db: DatabaseSync) {
 function open(): DatabaseSync {
   mkdirSync(path.dirname(FILE), { recursive: true });
   const db = new DatabaseSync(FILE);
-  db.exec("PRAGMA journal_mode = WAL");
+
+  // ⚠️ `PRAGMA journal_mode = WAL` is unlike every other statement here: it
+  // needs a brief EXCLUSIVE lock and does NOT honour busy_timeout. When several
+  // processes open this file at the same moment — which is exactly what a Next
+  // build does, since it evaluates this module in every worker — one of them
+  // gets `database is locked` and the whole build fails with it. (That is the
+  // intermittent "Failed to collect configuration for /api/admin/clients"
+  // error: the stack points at this line.)
+  //
+  // The mode is persistent once set, so there is nothing to do on an
+  // established database. Only attempt the change when it is not already WAL,
+  // and never let the attempt be fatal — another process having set it first is
+  // precisely the outcome we wanted.
+  const mode = String(
+    (db.prepare("PRAGMA journal_mode").get() as any)?.journal_mode || "",
+  ).toLowerCase();
+  if (mode !== "wal") {
+    try {
+      db.exec("PRAGMA journal_mode = WAL");
+    } catch {
+      /* another connection got there first — good enough */
+    }
+  }
+
   db.exec("PRAGMA busy_timeout = 5000");
   // MUST run before SCHEMA: SCHEMA would otherwise create empty trade_* tables
   // beside the populated paper_* ones and the rename below would be skipped,

@@ -9,7 +9,10 @@
 //   ^^ ^^ ^^^^^
 //   |  |  └─ 5 random symbols, ~33.5M per year
 //   |  └──── account-opening year (2 digits)
-//   └─────── TradeKaro
+//   └─────── TK, the initials of the platform's original name. Deliberately
+//            unchanged by the rename to TradeStox: live client codes already
+//            carry it, and CLIENT_CODE_RE rejects anything else, so switching
+//            the prefix would invalidate every code already issued.
 //
 // Pure module on purpose: db.ts imports it to backfill existing accounts, and
 // anything db.ts imports must not import db.ts back.

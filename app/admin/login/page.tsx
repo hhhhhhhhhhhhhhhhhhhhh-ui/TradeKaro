@@ -47,7 +47,7 @@ export default function AdminLoginPage() {
               </div>
               <div>
                 <div className="text-[15px] font-bold text-foreground">
-                  TradeKaro
+                  TradeStox
                 </div>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground/70">
                   OPERATIONS CONSOLE
