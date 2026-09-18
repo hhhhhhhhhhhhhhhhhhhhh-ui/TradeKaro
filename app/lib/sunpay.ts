@@ -259,11 +259,17 @@ async function call<T>({
       ok: false,
       // A signature mismatch is our bug, not the user's, so say so plainly
       // rather than passing "invalid_signature" through to a customer.
+      //
+      // The wording names the likely cause, because it is nearly always the
+      // same one: the KEY was accepted (a wrong key answers `invalid_api_key`
+      // instead) and only the signature failed, which means the secret sitting
+      // beside that key is not the secret that belongs to it — a swapped
+      // pay-in/payout pair, or a secret pasted into the key's box.
       error:
         code === "invalid_signature"
-          ? "Gateway rejected our signature — check the API secret"
+          ? `Gateway rejected our signature — the ${rail} key was accepted but the ${rail} secret does not match it. Check that this key and secret were copied from the same row of the merchant dashboard (and that neither was taken from the other rail).`
           : code === "invalid_api_key"
-            ? "Gateway rejected our API key — check which key is loaded"
+            ? `Gateway rejected our API key — the ${rail} key itself is not valid. Check which key is loaded.`
             : String(code),
       status:
         res.status === 401 || res.status === 403
