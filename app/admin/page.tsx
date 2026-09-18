@@ -1057,7 +1057,9 @@ export default function AdminPage() {
                         ? "—"
                         : (Number(stats.money.usersPnl) || 0) < 0
                           ? `Users down ${money(Math.abs(Number(stats.money.usersPnl)))} · won ${money(Number(stats.money.usersWinning))}`
-                          : `Users are net UP ${money(Number(stats.money.usersPnl))} — the platform is down`
+                          : (Number(stats.money.usersPnl) || 0) > 0
+                            ? `Users are net UP ${money(Number(stats.money.usersPnl))} — the platform is down`
+                            : "Nothing realised yet — no closed trades"
                     }
                   />
                   <Kpi
