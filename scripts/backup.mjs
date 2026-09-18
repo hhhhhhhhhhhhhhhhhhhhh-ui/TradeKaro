@@ -79,34 +79,69 @@ const stamp = new Date()
   .replace("T", "-")
   .replace(/[:]/g, "")
   .slice(0, 15);
-const zip = path.join(OUT, `trade-backup-${stamp}.zip`);
 
-const list = items.map((p) => `'${p.replace(/'/g, "''")}'`).join(",");
-const ps = `Compress-Archive -Path ${list} -DestinationPath '${zip.replace(/'/g, "''")}' -Force`;
-const zipRun = spawnSync("powershell", ["-NoProfile", "-Command", ps], {
-  encoding: "utf8",
-});
-if (zipRun.status !== 0) {
-  console.error("zip failed:", zipRun.stderr || zipRun.stdout);
+// ⚠️ This used to call PowerShell's `Compress-Archive` unconditionally. That
+// cmdlet does not exist on Linux and there is no `powershell` binary there, so
+// on the server every deploy printed "zip failed: undefined" followed by
+// "backup failed. Continuing, but you have no fresh snapshot." — and
+// backups/ stayed empty. The safety net the deploy script trusts had therefore
+// never once produced a snapshot on the machine that matters. Use whatever the
+// host actually has.
+const isWin = process.platform === "win32";
+const ext = isWin ? "zip" : "tar.gz";
+const archive = path.join(OUT, `trade-backup-${stamp}.${ext}`);
+
+const archiveRun = isWin
+  ? spawnSync(
+      "powershell",
+      [
+        "-NoProfile",
+        "-Command",
+        `Compress-Archive -Path ${items
+          .map((p) => `'${p.replace(/'/g, "''")}'`)
+          .join(",")} -DestinationPath '${archive.replace(/'/g, "''")}' -Force`,
+      ],
+      { encoding: "utf8" },
+    )
+  : // tar is present on every Linux and macOS host and needs no extra library.
+    // Paths are relative to ROOT so the archive unpacks in place.
+    spawnSync(
+      "tar",
+      [
+        "-czf",
+        archive,
+        "-C",
+        ROOT,
+        ...items.map((p) => path.relative(ROOT, p)),
+      ],
+      { encoding: "utf8" },
+    );
+
+if (archiveRun.error || archiveRun.status !== 0) {
+  console.error(
+    "archive failed:",
+    archiveRun.error?.message || archiveRun.stderr || archiveRun.stdout,
+  );
   process.exit(1);
 }
-const kb = Math.round(statSync(zip).size / 1024);
+const kb = Math.round(statSync(archive).size / 1024);
 
-// 4) Rotation — keep the newest KEEP archives.
-const zips = readdirSync(OUT)
-  .filter((f) => f.startsWith("trade-backup-") && f.endsWith(".zip"))
+// 4) Rotation — keep the newest KEEP archives. Matched on the prefix alone, so
+// it covers the .zip written on Windows and the .tar.gz written elsewhere.
+const archives = readdirSync(OUT)
+  .filter((f) => f.startsWith("trade-backup-"))
   .sort();
-const drop = zips.slice(0, Math.max(0, zips.length - KEEP));
+const drop = archives.slice(0, Math.max(0, archives.length - KEEP));
 for (const f of drop) unlinkSync(path.join(OUT, f));
 
-console.log(`backup written: backups/${path.basename(zip)} (${kb} KB)`);
+console.log(`backup written: backups/${path.basename(archive)} (${kb} KB)`);
 console.log(
   `rows: ${Object.entries(counts)
     .map(([k, v]) => `${k}=${v}`)
     .join(" ")}`,
 );
 console.log(
-  `rotation: ${zips.length - drop.length} kept, ${drop.length} removed (keep ${KEEP})`,
+  `rotation: ${archives.length - drop.length} kept, ${drop.length} removed (keep ${KEEP})`,
 );
 
 // 5) Optional: schedule it daily at 18:00 (well after market close).
