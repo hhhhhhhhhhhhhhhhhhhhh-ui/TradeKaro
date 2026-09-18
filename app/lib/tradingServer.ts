@@ -991,7 +991,12 @@ const SWEEP_SEGMENTS: ExchangeCode[] = [EQUITY_EXCHANGE, "MCX", "NSCOM"];
  */
 export async function sweepMisSquareOff(
   now = new Date(),
-): Promise<{ swept: number; unpriced: number; unclassified: number; why: string }> {
+): Promise<{
+  swept: number;
+  unpriced: number;
+  unclassified: number;
+  why: string;
+}> {
   const rs = await runtimeSettings();
   const cal = await todaySessions().catch(() => null);
   const plans = new Map<

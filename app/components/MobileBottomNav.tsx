@@ -13,6 +13,7 @@ import {
   FiFilter,
   FiBarChart2,
   FiLogIn,
+  FiBox,
 } from "react-icons/fi";
 
 // Signed-in dock: the account surfaces a trader jumps between all day.
@@ -26,13 +27,20 @@ const AUTH_TABS = [
 
 // Visitor dock. Four of the five signed-in tabs are account pages that would
 // only bounce off the proxy, so they are swapped for the public market pages
-// and the one action a visitor actually needs. Both lists must stay at five
-// entries: the grid is a fixed grid-cols-5 and a dynamic class name would not
-// survive Tailwind's build-time scan.
+// and the one action a visitor actually needs.
+//
+// Six entries, not five: a visitor has no hamburger — it renders only when
+// signed in — so the dock is the ONLY navigation a logged-out phone user has,
+// and /commodities was unreachable from it. The signed-in list stays at five
+// because those are the account surfaces a trader jumps between.
+//
+// The column class is a literal per list, never `grid-cols-${n}`: a dynamic
+// name would not survive Tailwind's build-time scan.
 const GUEST_TABS = [
   { href: "/stocks", label: "STOCKS", Icon: FiTrendingUp },
   { href: "/screener", label: "SCREEN", Icon: FiFilter },
   { href: "/topmovers", label: "MOVERS", Icon: FiBarChart2 },
+  { href: "/commodities", label: "COMMOD", Icon: FiBox },
   { href: "/options", label: "OPTS", Icon: FiActivity },
   { href: "/login", label: "LOGIN", Icon: FiLogIn, hero: true },
 ];
@@ -78,7 +86,7 @@ export default function MobileBottomNav() {
       <div className="px-3 pointer-events-auto">
         <div className="mx-auto max-w-[520px] border border-border bg-card/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
           <div className="h-[2px] w-full brand-gradient" />
-          <div className="grid grid-cols-5">
+          <div className={hasSession ? "grid grid-cols-5" : "grid grid-cols-6"}>
             {TABS.map(({ href, label, Icon, hero }) => {
               const active = isActiveTab(path, href);
               if (hero) {

@@ -191,7 +191,15 @@ export function segmentPhase(
     const s = cal.sessions[segment];
     if (s) {
       const t = now.getTime();
-      if (t < s.start) return "PRE";
+      // PRE is bounded by the same window as the fallback below. A bare
+      // `t < s.start` is true from midnight — all night and most of the morning
+      // — so this path reported PRE-OPEN at 03:00, telling a customer the
+      // session was about to begin six hours before it was. The fallback branch
+      // was fixed without this one, and the difference was invisible until a
+      // calendar was actually available: every local test passed `cal = null`
+      // and took the other path.
+      if (t < s.start)
+        return s.start - t <= PRE_OPEN_WINDOW_MINS * 60_000 ? "PRE" : "POST";
       if (t <= s.end) return "LIVE";
       return "POST";
     }

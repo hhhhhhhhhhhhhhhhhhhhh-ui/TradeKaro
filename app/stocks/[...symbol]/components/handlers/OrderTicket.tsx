@@ -116,8 +116,13 @@ export default function OrderTicket(props: {
   const lotText = `${lotCount} lot${lotCount === 1 ? "" : "s"}`;
   // The contract's OWN tick, not a fixed 5 paise. The master has always carried
   // it and it was thrown away, so the stepper moved in 0.05 increments on an MCX
-  // contract quoted in ₹100 steps — letting a customer pick a price the exchange
+  // contract quoted in ₹1 steps — letting a customer pick a price the exchange
   // does not have, on the instrument where the error is largest.
+  //
+  // `contract.tick` arrives in RUPEES — /api/market/instrument divides the
+  // master's paise by 100. It did not always: this stepper once read the raw
+  // paise value, so gold stepped ₹100 at a time and the field was 100× too
+  // coarse. Do not divide again here.
   const tickSize =
     Number(meta?.contract?.tick) > 0 ? Number(meta?.contract?.tick) : 0.05;
   const estValue =

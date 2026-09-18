@@ -148,11 +148,11 @@ which relocked the token above.
 India's exchanges do not share a session, so "is the market open" is never one
 question. `app/lib/marketClock.ts` holds the single answer.
 
-| Segment | Session (IST) | MIS square-off cutoff |
-| --- | --- | --- |
-| NSE cash | 09:15–15:30 | 15:15 (admin `trading.squareOffTime`) |
-| NFO | 09:15–15:40 | 15:15 |
-| MCX / NSCOM | 09:00–23:30 | 23:25 (session end − 5 min) |
+| Segment     | Session (IST) | MIS square-off cutoff                 |
+| ----------- | ------------- | ------------------------------------- |
+| NSE cash    | 09:15–15:30   | 15:15 (admin `trading.squareOffTime`) |
+| NFO         | 09:15–15:40   | 15:15                                 |
+| MCX / NSCOM | 09:00–23:30   | 23:25 (session end − 5 min)           |
 
 - `segmentPhase()` and `orderWindow()` take a segment. **Never call them without
   one on a path a commodity can reach** — the default is NSE, and an NSE answer
@@ -179,21 +179,51 @@ question. `app/lib/marketClock.ts` holds the single answer.
 - `MASTER_VERSION` gates the disk cache, which is trusted for a week. Bump it on
   any change to how the master is derived, or a deployed fix sits unused behind
   the old cache.
+- ⚠️ **`tick` from the master is in PAISE.** Gold is 100 (₹1), zinc 5 (₹0.05),
+  cotton 1000 (₹10) — gold is the tell, since a ₹100 tick on a ₹15,304 unit price
+  is 0.65%, which no exchange quotes. `/api/market/instrument` divides by 100 at
+  the boundary so every consumer gets rupees; `OrderTicket` and `AlertBox` both
+  feed it straight into a ₹ price stepper, and served raw it made gold step ₹100
+  at a time. Pinned by a smoke check — do not "fix" the division.
 - ⚠️ `POST /api/market/quote` accepts **at most 10 symbols** and drops the rest
   SILENTLY. Chunk larger sets; `useLiveTicks` and `app/lib/movers.ts` already do.
+
+### `/commodities`
+
+The ladder is the discovery surface for the affordability problem above: MCX
+lists several sizes per commodity, so a screen offering only "GOLD" is really
+offering the 1 kg contract. `app/lib/commodityUnits.ts` holds the two things that
+page needs and neither is derivable:
+
+- **Family** — honest grouping of the size variants into one commodity, by
+  longest-prefix match with an alias table for the roots that do not prefix their
+  parent (`ALUMINI`, `NATGAS*`). 33 roots collapse to 17 groups. An unmatched
+  root becomes its own family, so a new MCX root is never hidden — the mistake
+  `/topmovers` made with a hardcoded universe.
+- **Pack size** — what one lot physically is. Only roots whose quoted unit is
+  **verified** are listed; the rest render the lot as a bare number, because a
+  wrong label is worse than a missing one. ZINC, LEAD and ALUMINIUM report
+  `lot_size` 5, which is five **tonnes** on MCX but reads as 5 units here, so
+  labelling them "5 kg" would be off by a factor of a thousand.
+
+The page subscribes **every** contract through `useLiveTicks`, which is what puts
+them on the upstream socket and returns depth/OI. It previously fetched quotes
+once on mount and never again, so prices were frozen at page-load time while the
+footnote called them live. Contracts with no quote are rendered greyed rather
+than filtered out, and counted in the header.
 
 ## 4. Backend on workers.dev (non-Upstox data)
 
 Base `app/components/apiURL.tsx`. Auth cookie `token` via `cookies-next`.
 
-| Area           | Endpoint                                                    | Used by                                                  |
-| -------------- | ----------------------------------------------------------- | -------------------------------------------------------- |
-| Auth           | `POST /auth/verifyToken`, `POST /auth/getAccountDetails`    | middleware, Navbar funds pill, PortfolioStrip            |
-| Trade mirror   | `POST /transaction/buyScrip`, `POST /transaction/sellScrip` | OrderTicket, popups, basket, TradeEngine, PositionsPanel |
-| Movers         | `POST /getTopMovers`, `POST /topmovers`                     | dashboard, /topmovers, landing LiveMovers                |
-| Indices/market | `POST /getIndices`, `POST /getMarketCap`                    | dashboard IndicesSection, MarketStatusRow                |
-| News           | `POST /announcements` → `{articles}` (provider instrument news, per-symbol) | NewsFeed, StockNews, /news |
-| Quote/depth    | `POST /getStockQuote`, `POST /getOrderBook`                 | stock page header, `useOrderBook` DepthPanel/Orderbook   |
+| Area           | Endpoint                                                                    | Used by                                                  |
+| -------------- | --------------------------------------------------------------------------- | -------------------------------------------------------- |
+| Auth           | `POST /auth/verifyToken`, `POST /auth/getAccountDetails`                    | middleware, Navbar funds pill, PortfolioStrip            |
+| Trade mirror   | `POST /transaction/buyScrip`, `POST /transaction/sellScrip`                 | OrderTicket, popups, basket, TradeEngine, PositionsPanel |
+| Movers         | `POST /getTopMovers`, `POST /topmovers`                                     | dashboard, /topmovers, landing LiveMovers                |
+| Indices/market | `POST /getIndices`, `POST /getMarketCap`                                    | dashboard IndicesSection, MarketStatusRow                |
+| News           | `POST /announcements` → `{articles}` (provider instrument news, per-symbol) | NewsFeed, StockNews, /news                               |
+| Quote/depth    | `POST /getStockQuote`, `POST /getOrderBook`                                 | stock page header, `useOrderBook` DepthPanel/Orderbook   |
 
 ## 5. Pages and what each fetches
 

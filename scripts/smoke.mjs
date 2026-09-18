@@ -1099,6 +1099,37 @@ await check(
   },
 );
 
+// ── the tick is served in rupees, not the master's paise ────────────────────
+// `tick_size` in the master is paise: gold 100, zinc 5, cotton 1000. Every
+// consumer of `contract.tick` is a rupee price input — the ticket's limit
+// stepper and the alert box — so serving it raw made gold step ₹100 at a time on
+// a contract whose real tick is ₹1, and the alert box could never reach the price
+// it was set against. The conversion is one line in the instrument route and
+// trivial to revert by accident, hence a check pinned to three published MCX
+// specs rather than merely "tick > 0".
+await check("market: commodity tick is in rupees, not paise", async () => {
+  const want = { GOLD: 1, ZINC: 0.05, COTTON: 10 };
+  const r = await get(
+    `/api/market/instrument?symbols=${Object.keys(want).join(",")}`,
+  );
+  const items = r.json?.items || [];
+  const bad = [];
+  const seen = [];
+  for (const [sym, expect] of Object.entries(want)) {
+    const got = Number(items.find((i) => i.symbol === sym)?.contract?.tick);
+    if (!Number.isFinite(got)) bad.push(`${sym}:missing`);
+    else if (Math.abs(got - expect) > 1e-9)
+      bad.push(
+        `${sym}:tick=${got} want ${expect}${got >= expect * 10 ? " (paise?)" : ""}`,
+      );
+    else seen.push(`${sym} ₹${got}`);
+  }
+  return {
+    ok: !bad.length,
+    info: bad.length ? bad.join(" ") : seen.join(" · "),
+  };
+});
+
 // ── commodities reach the market-survey surfaces ────────────────────────────
 // The mover universe is a hardcoded equity table, which is exactly the shape of
 // thing that left commodities out of every survey surface. The commodity group

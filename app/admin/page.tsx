@@ -3890,7 +3890,10 @@ function InstrumentMaster() {
     loading?: boolean;
     error?: string | null;
   } | null>(null);
-  const [outages, setOutages] = useState<{ outages: number; last: string | null } | null>(null);
+  const [outages, setOutages] = useState<{
+    outages: number;
+    last: string | null;
+  } | null>(null);
   const [err, setErr] = useState("");
 
   function load() {
@@ -3979,7 +3982,7 @@ function InstrumentMaster() {
               wrong for any commodity, whose session and square-off cutoff are
               eight hours later. Orders still refuse safely (the guessed key
               returns no price), and the MIS sweep now SKIPS an unresolved leg
-              rather than closing it on a guess. Last: {" "}
+              rather than closing it on a guess. Last:{" "}
               <code>{outages.last}</code>
             </Callout>
           ) : null}

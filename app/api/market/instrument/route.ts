@@ -77,7 +77,16 @@ export async function GET(req: NextRequest) {
           com
             ? {
                 lot: com.lot,
-                tick: com.tick,
+                // The master's `tick_size` is in PAISE, not rupees: gold is 100
+                // (₹1), zinc 5 (₹0.05), cotton 1000 (₹10). Gold is the tell — a
+                // ₹100 tick on a ₹15,304 unit price is 0.65%, which no exchange
+                // quotes. Every consumer of this field is a rupee price input,
+                // so the conversion happens once, here, at the boundary.
+                //
+                // Taken raw, the ticket's price stepper moved in ₹100 jumps on a
+                // contract whose real tick is ₹1, and the alert box could not
+                // reach the price it was set against.
+                tick: com.tick / 100,
                 expiry: com.expiry,
                 name: com.name,
               }

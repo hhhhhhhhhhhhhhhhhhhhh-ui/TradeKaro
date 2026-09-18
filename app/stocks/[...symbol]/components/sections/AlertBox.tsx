@@ -10,6 +10,8 @@ export default function AlertBox(props: { symbol: string; ltp: number }) {
   // The contract's tick, so the stepper is usable on a commodity. A fixed 0.05
   // is meaningless against a quote of ₹1,53,048 — you would need three million
   // clicks to move it a percent.
+  //
+  // Already in rupees: /api/market/instrument converts the master's paise.
   const tickSize =
     Number(meta?.contract?.tick) > 0 ? Number(meta?.contract?.tick) : 0.05;
   const [op, setOp] = useState(">=" as ">=" | "<=");

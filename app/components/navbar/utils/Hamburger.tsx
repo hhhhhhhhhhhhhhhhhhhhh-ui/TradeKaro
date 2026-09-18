@@ -53,6 +53,16 @@ export default function Hamburger() {
       href: "/options",
     },
     {
+      title: "Commodities",
+      id: 11,
+      href: "/commodities",
+    },
+    {
+      title: "News",
+      id: 12,
+      href: "/news",
+    },
+    {
       title: "Profile",
       id: 7,
       href: "/profile",
