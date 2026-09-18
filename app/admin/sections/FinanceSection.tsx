@@ -338,7 +338,9 @@ export default function FinanceSection({
                 d?.balance?.upstream_balance !== undefined
                   ? `upstream ${moneyFmt(d.balance.upstream_balance)}`
                   : d?.balanceError
-                    ? "unreadable"
+                    ? // Not a fault on our side: the provider serves no balance
+                      // endpoint, so this tile can never fill. See the note below.
+                      "not offered by provider"
                     : undefined
               }
             />
@@ -363,7 +365,7 @@ export default function FinanceSection({
           {recon ? (
             <Card
               title="Reconciliation"
-              sub="Our own order book and ledger. The gateway balance above is the figure these should agree with once settlement clears."
+              sub="Our own order book and ledger. These are the figures that must agree with the provider's settlement report — there is no balance API to read them from, so this is checked by hand against the merchant dashboard."
             >
               <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <Kpi
@@ -506,7 +508,11 @@ export default function FinanceSection({
                 next load — the page reloads every 30s, so it vanished on its own
                 without the operator even refreshing. `field()` carries the
                 blur-save, the mask handling and the superadmin gate with it. */}
-            {field("webhookSecret", "Webhook secret (signs callbacks — not the pay-in secret)", true)}
+            {field(
+              "webhookSecret",
+              "Webhook secret (signs callbacks — not the pay-in secret)",
+              true,
+            )}
             <Callout tone="info">
               This is the <strong>third</strong> secret and the only one that
               verifies an incoming callback. The merchant dashboard lists it

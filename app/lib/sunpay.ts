@@ -75,12 +75,16 @@ export type GatewayResult<T> =
        * What KIND of failure this was. The distinction decides whether money can
        * be retried, so it is classified here rather than guessed by the caller:
        *
-       *   auth    — our credentials or signature are wrong. Nothing was sent.
-       *   config  — the rail is disabled at the provider. Nothing was sent.
-       *   network — timed out or unreachable. THE TRANSFER MAY BE IN FLIGHT.
-       *   refused — the provider said no to this specific transfer. Nothing sent.
+       *   auth        — our credentials or signature are wrong. Nothing was sent.
+       *   config      — the rail is disabled at the provider. Nothing was sent.
+       *   network     — timed out or unreachable. THE TRANSFER MAY BE IN FLIGHT.
+       *   refused     — the provider said no to this specific transfer. Nothing sent.
+       *   unsupported — the provider has no such endpoint. Nothing was sent, and
+       *                 retrying will never help. Distinct from `auth` on purpose:
+       *                 a 404 reads like a missing route while an unsigned GET on a
+       *                 real route reads like a bad key, and they need opposite fixes.
        */
-      kind?: "auth" | "config" | "network" | "refused";
+      kind?: "auth" | "config" | "network" | "refused" | "unsupported";
     };
 
 /**
@@ -188,15 +192,16 @@ async function call<T>({
     };
 
   const raw = body ? JSON.stringify(body) : "";
-  const headers: Record<string, string> = { accept: "application/json" };
-  if (raw) {
-    headers["content-type"] = "application/json";
-    headers["x-api-key"] = key;
-    headers["x-signature"] = signBody(raw, secret);
-  } else {
-    // GETs take the key alone — see the provider's status/balance examples.
-    headers["x-api-key"] = key;
-  }
+  const headers: Record<string, string> = {
+    accept: "application/json",
+    "x-api-key": key,
+    // GETs are signed too, over an EMPTY body. The provider answers an unsigned
+    // read with 401 invalid_api_credentials, which reads exactly like a wrong
+    // API key but is really a missing signature — the fix is the opposite of
+    // what the error suggests, so it is worth the signature on every request.
+    "x-signature": signBody(raw, secret),
+  };
+  if (raw) headers["content-type"] = "application/json";
 
   let res: Response;
   try {
@@ -415,15 +420,31 @@ export type MerchantBalance = {
   upstream_balance?: number;
 };
 
+/**
+ * The merchant balance at the gateway.
+ *
+ * ⚠️ This provider does not serve one. Every plausible route was tested against
+ * the live gateway with a correctly signed GET — /balance, /balance/inr,
+ * /payouts/balance, /payins/balance, /account/balance, /merchant/balance,
+ * /wallet/balance, /merchant/info, /transactions, /settlements, /reports — and
+ * all of them answer 404. The same signed GET against /payins/{id} returns 200,
+ * which proves signed reads work, so these routes genuinely do not exist rather
+ * than failing on authentication.
+ *
+ * So this is deliberately not implemented as a request. Firing a call that can
+ * only ever 404 costs a round trip and surfaces a failure indistinguishable from
+ * "the gateway is down". The caller is told plainly instead, and the console can
+ * say so on the tile rather than showing a dash that looks like it is loading.
+ */
 export function merchantBalance(
-  cfg: SunpayConfig,
-  currency = "INR",
+  _cfg: SunpayConfig,
+  _currency = "INR",
 ): Promise<GatewayResult<MerchantBalance>> {
-  return call<MerchantBalance>({
-    cfg,
-    rail: "payout",
-    path: `/balance?currency=${encodeURIComponent(currency)}`,
-    method: "GET",
+  return Promise.resolve({
+    ok: false,
+    error: "The provider does not expose a merchant balance endpoint",
+    status: 501,
+    kind: "unsupported",
   });
 }
 

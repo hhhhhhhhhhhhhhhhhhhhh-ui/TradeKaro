@@ -499,9 +499,9 @@ export type CreatePayoutOutcome =
       /**
        * Why it failed, passed through from the gateway client. The caller needs
        * it to decide whether the money may be retried: `network` might have been
-       * sent, `auth`/`config`/`refused` definitely were not.
+       * sent, everything else definitely was not.
        */
-      kind?: "auth" | "config" | "network" | "refused";
+      kind?: "auth" | "config" | "network" | "refused" | "unsupported";
     };
 
 /**
