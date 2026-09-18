@@ -3464,7 +3464,7 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
             className={selectCls}
           >
             <option value="seen">Sort: last seen</option>
-            <option value="cash">Sort: cash</option>
+            <option value="cash">Sort: wallet</option>
             <option value="name">Sort: name</option>
           </select>
           <label className="flex cursor-pointer items-center gap-2 text-[12px] text-muted-foreground">
@@ -3552,7 +3552,7 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                 </th>
                 <th className={thCls}>USER</th>
                 <th className={thCls}>CLIENT ID</th>
-                <th className={thCls}>CASH</th>
+                <th className={thCls}>WALLET</th>
                 <th className={thCls}>DEPOSITED</th>
                 <th className={thCls}>STATUS</th>
                 <th className={thCls}>LAST SEEN</th>
@@ -3779,7 +3779,7 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                       v={sel.panLast4 ? `••••${sel.panLast4}` : "—"}
                     />
                     <SnapshotRow
-                      k="Cash"
+                      k="Wallet"
                       v={
                         typeof sel.cash === "number"
                           ? `₹${Number(sel.cash).toLocaleString("en-IN")}`

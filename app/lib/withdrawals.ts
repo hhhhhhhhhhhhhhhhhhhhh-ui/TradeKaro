@@ -69,6 +69,26 @@ export function withdrawnTotal(userId: string): number {
   return Number(r?.t) || 0;
 }
 
+/**
+ * The same figure for every account, in ONE query.
+ *
+ * The admin directory builds a row per customer, so calling `withdrawnTotal` in
+ * a loop would cost a query per user. Same predicate, deliberately: if the two
+ * ever disagree, the console and the ledger would too.
+ */
+export function withdrawnTotals(): Map<string, number> {
+  const rows = db
+    .prepare(
+      `SELECT user_id, COALESCE(SUM(amount), 0) AS t FROM withdrawals
+        WHERE status NOT IN ('rejected','failed')
+        GROUP BY user_id`,
+    )
+    .all() as { user_id: string; t: number }[];
+  const out = new Map<string, number>();
+  for (const r of rows) out.set(String(r.user_id), Number(r.t) || 0);
+  return out;
+}
+
 /** Pending only — what an operator still has to act on. */
 export function pendingTotal(userId: string): number {
   const r = db

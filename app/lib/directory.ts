@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "./db";
 import { getClients, type ClientRecord } from "./clientRegistry";
 import { depositedTotals, verifiedDepositedTotals } from "./deposits";
+import { withdrawnTotals } from "./withdrawals";
 import { normalizeWithdrawKyc, type WithdrawKycMode } from "./withdrawKyc";
 
 // ── Unified client directory ────────────────────────────────────────────────
@@ -185,7 +186,18 @@ export async function getDirectory(): Promise<DirectoryUser[]> {
   // Verified totals: the panel's "funded" figure is what the KYC gate is
   // measured against, so it must not count practice credits.
   const funded = verifiedDepositedTotals();
-  for (const u of out) u.deposited = funded.get(`u-${u.id}`) ?? 0;
+  const held = withdrawnTotals();
+  for (const u of out) {
+    const key = `u-${u.id}`;
+    u.deposited = funded.get(key) ?? 0;
+    // ⚠️ `cash` comes from the LEDGER, never from the heartbeat. The registry's
+    // copy is whatever the browser last reported when it signed in, so an
+    // account that deposited after its last visit displayed ₹0 while holding
+    // real money — which reads as "this customer has nothing". What an operator
+    // needs in this column is the wallet balance: real funds in, minus
+    // everything asked for or paid out. It is also the figure the customer sees.
+    u.cash = Math.max(0, u.deposited - (held.get(key) ?? 0));
+  }
 
   return out.sort((a, b) => activityAt(b) - activityAt(a));
 }

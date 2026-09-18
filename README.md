@@ -1,8 +1,8 @@
-## TradeKaro
+## TradeStox
 
 ### Trading & Stock Analysis for the Indian Stock Market
 
-TradeKaro is a web application for Indian stock market participants: live quotes for
+TradeStox is a web application for Indian stock market participants: live quotes for
 3,000+ NSE scrips, option chains across the major indices, interactive charts, and a
 full order-management workflow — order tickets, positions, P&L, watchlists and a
 tradebook.

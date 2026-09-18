@@ -19,6 +19,25 @@ let accountToken = "";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@demo.local";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Demo@123456";
 
+// Indian markets are shut at weekends, and the provider's calendar is right to
+// serve no sessions on those days. Checks that need a LIVE session must not
+// report a failure when the market is simply closed: a weekend red is noise,
+// and noise is how a real regression gets ignored. These report SKIPPED.
+function isWeekend(dateStr) {
+  const d = dateStr ? new Date(`${dateStr}T00:00:00`) : new Date();
+  const day = d.getDay();
+  return day === 0 || day === 6;
+}
+
+/** True when the calendar legitimately has nothing to run today. */
+function marketClosed(cal) {
+  return (
+    !!cal &&
+    isWeekend(cal.date) &&
+    Object.keys(cal.sessions || {}).length === 0
+  );
+}
+
 async function post(path, body, headers = {}) {
   const r = await fetch(BASE + path, {
     method: "POST",
@@ -640,6 +659,12 @@ await check("kyc gate: a real credit unlocks it", async () => {
 // silently disable the market-hours gate for every real user, so the restore is
 // not optional housekeeping.
 await check("mis: intraday leg is squared off server-side", async () => {
+  // The sweep needs a session cutoff to miss. On a closed market there is
+  // nothing to assert, so say so instead of reporting a failure nobody can act on.
+  const pub = await get("/api/admin/public");
+  if (marketClosed(pub.json?.calendar))
+    return { ok: true, info: "SKIPPED — market closed today" };
+
   const login = await fetch(BASE + "/api/admin/login", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1070,6 +1095,11 @@ await check("market: calendar serves per-segment sessions", async () => {
   if (!cal) return { ok: false, info: "no calendar in the public config" };
 
   const s = cal.sessions || {};
+  // A closed market has no sessions by definition. Failing here would blame the
+  // platform for the exchange being shut.
+  if (marketClosed(cal))
+    return { ok: true, info: `${cal.date} is a weekend — no session expected` };
+
   const missing = ["NSE", "NFO", "MCX"].filter((e) => !s[e]);
   if (missing.length)
     return { ok: false, info: `no session for ${missing.join(", ")}` };

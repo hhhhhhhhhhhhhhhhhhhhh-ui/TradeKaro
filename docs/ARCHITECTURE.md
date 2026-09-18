@@ -1,4 +1,4 @@
-# TradeKaro — how the whole website works
+# TradeStox — how the whole website works
 
 Market analysis + trading for NSE/BSE. Live prices from Upstox, accounts and
 aux data from the workers.dev backend, orders settled on the server.
