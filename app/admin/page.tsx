@@ -121,13 +121,54 @@ const EMERGENCY: EmergencyControl[] = [
   },
 ];
 
-type NavItem = { id: string; icon: ReactNode; desc: string };
-type NavGroup = { group: string; items: NavItem[] };
+type NavTab = { id: string; icon: ReactNode; desc: string };
+type NavSection = {
+  id: string;
+  icon: ReactNode;
+  desc: string;
+  tabs: NavTab[];
+};
 
-const NAV_GROUPS: NavGroup[] = [
+/**
+ * The console's information architecture.
+ *
+ * ── Why it changed ──────────────────────────────────────────────────────────
+ * It used to be sixteen flat items in five loose groups ("Management",
+ * "General", "System"). Nothing was wrong with any individual page; the problem
+ * was that the grouping told an operator nothing, and two pages answered the
+ * same question:
+ *
+ *   · "Keys & Access" was four unrelated jobs in one scroll — the Upstox token,
+ *     the feed token, the provider kill-switch, the instrument-master health,
+ *     the operator list AND your own password.
+ *   · "Trading & Risk" mixed trading caps with the KYC deposit requirement and
+ *     the withdrawal-KYC policy, which are money-out rules, not risk rules.
+ *   · KYC appeared in two places at once, so "where do I change the KYC limit?"
+ *     had two plausible answers.
+ *
+ * ── The rule now ────────────────────────────────────────────────────────────
+ * SIX sections, grouped by the JOB an operator is doing, not by which module
+ * the code lives in:
+ *
+ *   Dashboard    am I needed right now?
+ *   Money        taking money in, sending money out, and the rules for both
+ *   Customers    who is on the platform and what is their standing
+ *   Trading      what the book will and will not accept
+ *   Market data  the feed, the cache and what the storefront displays
+ *   Platform     who can operate this console, and what has been done
+ *
+ * Every tab id below is the id the page bodies already use, so each page keeps
+ * its own render branch and nothing had to be rewritten to move it. A tab that
+ * is not listed here is unreachable, and `sectionOf` derives the active section
+ * from the active tab — one source of truth, so the sidebar can never disagree
+ * with the content beside it.
+ */
+const SECTIONS: NavSection[] = [
   {
-    group: "General",
-    items: [
+    id: "Dashboard",
+    icon: <FiGrid size={16} aria-hidden />,
+    desc: "Health, quota and emergency controls",
+    tabs: [
       {
         id: "Overview",
         icon: <FiGrid size={15} aria-hidden />,
@@ -136,90 +177,128 @@ const NAV_GROUPS: NavGroup[] = [
       {
         id: "Analytics",
         icon: <FiTrendingUp size={15} aria-hidden />,
-        desc: "Funnel + activity",
-      },
-      {
-        id: "Content",
-        icon: <FiEdit3 size={15} aria-hidden />,
-        desc: "Banner + notice",
+        desc: "Funnel, activity, execution quality",
       },
     ],
   },
   {
-    group: "Management",
-    items: [
+    id: "Money",
+    icon: <FiCreditCard size={16} aria-hidden />,
+    desc: "Payments, pay-outs and the money rules",
+    tabs: [
       {
         id: "Finance",
         icon: <FiCreditCard size={15} aria-hidden />,
-        desc: "Payments, pay-outs, callbacks",
+        desc: "Rails, orders, pay-out queue, callbacks",
       },
       {
-        id: "Users & KYC",
+        id: "Limits & KYC",
+        icon: <FiShield size={15} aria-hidden />,
+        desc: "Deposit gate + who needs KYC to withdraw",
+      },
+    ],
+  },
+  {
+    id: "Customers",
+    icon: <FiUsers size={16} aria-hidden />,
+    desc: "Accounts, balances and access",
+    tabs: [
+      {
+        id: "Customers",
         icon: <FiUsers size={15} aria-hidden />,
-        desc: "Clients + operators",
+        desc: "Directory, KYC verdicts, credit, overrides",
       },
       {
         id: "Sessions",
         icon: <FiMonitor size={15} aria-hidden />,
-        desc: "Active sign-ins",
-      },
-      {
-        id: "Keys & Access",
-        icon: <FiKey size={15} aria-hidden />,
-        desc: "Tokens + roles",
+        desc: "Who is signed in right now",
       },
     ],
   },
   {
-    group: "Market data",
-    items: [
+    id: "Trading",
+    icon: <FiBarChart2 size={16} aria-hidden />,
+    desc: "What the book accepts and when",
+    tabs: [
       {
-        id: "Polling & Cache",
-        icon: <FiActivity size={15} aria-hidden />,
-        desc: "TTL + intervals",
-      },
-      {
-        id: "Scrips & Lists",
-        icon: <FiList size={15} aria-hidden />,
-        desc: "Tape + watchlist",
-      },
-      {
-        id: "Charts & Market",
-        icon: <FiBarChart2 size={15} aria-hidden />,
-        desc: "Defaults + hours",
-      },
-    ],
-  },
-  {
-    group: "Trading",
-    items: [
-      {
-        id: "Trading & Risk",
+        id: "Trading rules",
         icon: <FiShield size={15} aria-hidden />,
-        desc: "Funds + limits",
+        desc: "Capital, caps, margin, risk switches",
+      },
+      {
+        id: "Market hours",
+        icon: <FiActivity size={15} aria-hidden />,
+        desc: "Session window and holidays",
       },
       {
         id: "Orders & Alerts",
         icon: <FiBell size={15} aria-hidden />,
-        desc: "Qty + caps",
+        desc: "Ticket defaults and alert caps",
       },
     ],
   },
   {
-    group: "System",
-    items: [
+    id: "Market data",
+    icon: <FiActivity size={16} aria-hidden />,
+    desc: "The feed, the cache and the storefront",
+    tabs: [
       {
-        id: "Logs",
+        id: "Feed & credentials",
+        icon: <FiKey size={15} aria-hidden />,
+        desc: "Upstox tokens, kill-switch, master health",
+      },
+      {
+        id: "Caching & polling",
         icon: <FiActivity size={15} aria-hidden />,
-        desc: "Audit trail",
+        desc: "TTLs and refresh intervals",
+      },
+      {
+        id: "Lists & tape",
+        icon: <FiList size={15} aria-hidden />,
+        desc: "Ticker tape and watchlist rail",
+      },
+      {
+        id: "Charts",
+        icon: <FiTrendingUp size={15} aria-hidden />,
+        desc: "Chart defaults and candle windows",
+      },
+    ],
+  },
+  {
+    id: "Platform",
+    icon: <FiEdit3 size={16} aria-hidden />,
+    desc: "Operators, audit and public copy",
+    tabs: [
+      {
+        id: "Operators",
+        icon: <FiUsers size={15} aria-hidden />,
+        desc: "Console accounts, roles, your password",
+      },
+      {
+        id: "Site & content",
+        icon: <FiEdit3 size={15} aria-hidden />,
+        desc: "Banner, notice and visibility",
+      },
+      {
+        id: "Audit log",
+        icon: <FiList size={15} aria-hidden />,
+        desc: "Every operator action",
       },
     ],
   },
 ];
 
-const NAV: (NavItem & { group: string })[] = NAV_GROUPS.flatMap((g) =>
-  g.items.map((n) => ({ ...n, group: g.group })),
+/** Flat list, for the breadcrumb, the search and the mobile bar. */
+const NAV = SECTIONS.flatMap((sec) =>
+  sec.tabs.map((t) => ({ ...t, section: sec.id, sectionDesc: sec.desc })),
 );
+
+/** Which section owns this tab? Derived, never stored twice. */
+function sectionOf(tabId: string): NavSection {
+  return (
+    SECTIONS.find((sec) => sec.tabs.some((t) => t.id === tabId)) || SECTIONS[0]
+  );
+}
 
 type Tab = string;
 
@@ -239,6 +318,14 @@ export default function AdminPage() {
   const [feedDraft, setFeedDraft] = useState("");
   const [drawer, setDrawer] = useState(false);
   const [navQ, setNavQ] = useState("");
+  // What is WAITING for a human, shown on the nav itself. An operations console
+  // that only tells you something is wrong after you click into the right page
+  // is a console you have to remember to check; this is the one number that
+  // decides whether an operator is needed at all.
+  const [waiting, setWaiting] = useState<{ payouts: number; callbacks: number }>({
+    payouts: 0,
+    callbacks: 0,
+  });
   const router = useRouter();
   const canEdit = role === "superadmin" || role === "operator";
 
@@ -256,6 +343,25 @@ export default function AdminPage() {
       setEmail(j.email);
       const st = await fetch("/api/admin/stats").then((x) => x.json());
       setStats(st);
+      // Best-effort: a console that cannot read the payment rail must still
+      // render. The badge is an extra, not a dependency.
+      try {
+        const pay = await fetch("/api/admin/payments").then((x) => x.json());
+        const bad = new Set([
+          "bad_signature",
+          "unknown_order",
+          "amount_mismatch",
+          "unactionable",
+        ]);
+        setWaiting({
+          payouts: Array.isArray(pay?.queue) ? pay.queue.length : 0,
+          callbacks: Array.isArray(pay?.webhooks)
+            ? pay.webhooks.filter((w: any) => bad.has(String(w?.outcome))).length
+            : 0,
+        });
+      } catch {
+        /* leave the badge at zero rather than blocking the page */
+      }
     } catch (e: any) {
       setErr(e?.message || "Load failed");
     }
@@ -483,69 +589,143 @@ export default function AdminPage() {
     s.providerOff,
     s.trading?.haltFills,
   ].filter(Boolean).length;
+  const activeSection = sectionOf(tab);
   const tabMeta = NAV.find((n) => n.id === tab);
-  const navGroups = NAV_GROUPS.map((g) => ({
-    ...g,
-    items: g.items.filter(
-      (n) =>
-        !navQ.trim() ||
-        n.id.toLowerCase().includes(navQ.toLowerCase()) ||
-        n.desc.toLowerCase().includes(navQ.toLowerCase()),
-    ),
-  })).filter((g) => g.items.length > 0);
+  // A section is "open" when it owns the active tab. No separate expand state:
+  // one less thing to get out of step with the content, and the sidebar can
+  // never show a section as open while a different one is on screen.
+  const sectionMatches = SECTIONS.map((sec) => {
+    const q = navQ.trim().toLowerCase();
+    if (!q) return { sec, hits: sec.tabs, open: sec.id === activeSection.id };
+    const secHit =
+      sec.id.toLowerCase().includes(q) || sec.desc.toLowerCase().includes(q);
+    const hits = sec.tabs.filter(
+      (t) =>
+        t.id.toLowerCase().includes(q) ||
+        t.desc.toLowerCase().includes(q) ||
+        secHit,
+    );
+    return { sec, hits, open: hits.length > 0 };
+  }).filter((g) => g.hits.length > 0);
+
+  const go = (id: string, onPick?: () => void) => {
+    setTab(id);
+    // Clear the menu filter: leaving it applied made the sidebar collapse to a
+    // single entry (or nothing) after navigating, which looked like the menu had
+    // vanished.
+    setNavQ("");
+    if (typeof window !== "undefined") window.scrollTo({ top: 0 });
+    onPick?.();
+  };
 
   const sideNav = (onPick?: () => void) => (
-    <nav className="flex-1 overflow-y-auto p-3">
-      {navGroups.map((g) => (
-        <div key={g.group} className="mb-3">
-          <div className="px-3 pb-1.5 text-[10px] font-bold tracking-[0.12em] text-muted-foreground/70">
-            {g.group.toUpperCase()}
-          </div>
-          {g.items.map((n) => (
-            <button
-              key={n.id}
-              onClick={() => {
-                setTab(n.id);
-                // Clear the menu filter: leaving it applied made the sidebar
-                // collapse to a single entry (or nothing) after navigating,
-                // which looked like the menu had vanished.
-                setNavQ("");
-                onPick?.();
-              }}
-              className={`mb-0.5 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition ${
-                tab === n.id
+    <nav className="flex-1 overflow-y-auto px-3 py-3">
+      {sectionMatches.map(({ sec, hits, open }) => (
+        <div key={sec.id} className="mb-1.5">
+          <button
+            onClick={() => {
+              // Clicking the section you are already inside must not yank you
+              // off the page you are reading; clicking a different one opens it
+              // at its first page.
+              if (!open) go(hits[0].id, onPick);
+            }}
+            aria-expanded={open}
+            className={`flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left transition ${
+              open
+                ? "bg-brand/10 text-foreground"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            }`}
+          >
+            <span
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${
+                open
                   ? "bg-brand text-brand-foreground"
-                  : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                  : "bg-muted/60 text-muted-foreground"
               }`}
             >
+              {sec.icon}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[13px] font-bold">
+                {sec.id}
+              </span>
               <span
-                className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[14px] ${
-                  tab === n.id
-                    ? "bg-brand-foreground/20 text-brand-foreground"
-                    : "bg-muted/60 text-muted-foreground"
+                className={`block truncate text-[10.5px] ${open ? "text-muted-foreground" : "text-muted-foreground/60"}`}
+              >
+                {sec.desc}
+              </span>
+            </span>
+            {sec.tabs.length > 1 ? (
+              <span
+                className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${
+                  open
+                    ? "bg-brand/20 text-brand"
+                    : "bg-muted/60 text-muted-foreground/70"
                 }`}
               >
-                {n.icon}
+                {sec.tabs.length}
               </span>
-              <span className="min-w-0">
-                <span className="block truncate text-[13px] font-semibold">
-                  {n.id}
-                </span>
-                <span
-                  className={`block truncate text-[11px] ${
-                    tab === n.id
-                      ? "text-brand-foreground/90"
-                      : "text-muted-foreground/70"
+            ) : null}
+            {sec.id === "Money" &&
+            (waiting.payouts > 0 || waiting.callbacks > 0) ? (
+              <span
+                title={`${waiting.payouts} pay-out request(s) waiting for approval${
+                  waiting.callbacks
+                    ? `, ${waiting.callbacks} callback(s) we could not act on`
+                    : ""
+                }`}
+                className="shrink-0 rounded-full bg-negative px-1.5 py-0.5 text-[10px] font-bold text-negative-foreground"
+              >
+                {waiting.payouts + waiting.callbacks}
+              </span>
+            ) : null}
+          </button>
+
+          {/* The section's pages, always visible while it is the active one —
+              which is what turns "16 labels in 5 vague groups" into "six jobs,
+              each with its pages underneath it". */}
+          {open ? (
+            <div className="ml-[26px] mt-0.5 border-l border-border/70 pl-2.5">
+              {hits.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => go(t.id, onPick)}
+                  className={`mb-0.5 flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left transition ${
+                    tab === t.id
+                      ? "bg-brand text-brand-foreground"
+                      : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
                   }`}
                 >
-                  {n.desc}
-                </span>
-              </span>
-            </button>
-          ))}
+                  <span className="shrink-0 text-[13px]">{t.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[12.5px] font-semibold">
+                      {t.id}
+                    </span>
+                    <span
+                      className={`block truncate text-[10.5px] ${tab === t.id ? "text-brand-foreground/80" : "text-muted-foreground/60"}`}
+                    >
+                      {t.desc}
+                    </span>
+                  </span>
+                  {t.id === "Finance" && waiting.payouts > 0 ? (
+                    <span
+                      title={`${waiting.payouts} pay-out request(s) waiting for approval`}
+                      className={`shrink-0 rounded-full px-1.5 text-[10px] font-bold ${
+                        tab === t.id
+                          ? "bg-brand-foreground/25 text-brand-foreground"
+                          : "bg-negative text-negative-foreground"
+                      }`}
+                    >
+                      {waiting.payouts}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </div>
       ))}
-      {navGroups.length === 0 ? (
+      {sectionMatches.length === 0 ? (
         <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
           <div className="text-[12px] text-muted-foreground/70">
             No menu matches “{navQ}”.
@@ -659,7 +839,7 @@ export default function AdminPage() {
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-1.5 text-[12px] text-muted-foreground/70">
-                <span>Home</span>
+                <span>{activeSection.id}</span>
                 <span>/</span>
                 <span className="font-semibold text-foreground/80">{tab}</span>
               </div>
@@ -704,21 +884,27 @@ export default function AdminPage() {
               Sign out
             </button>
           </div>
-          <nav className="flex gap-2 overflow-x-auto px-4 pb-2.5 [scrollbar-width:none] lg:hidden [&::-webkit-scrollbar]:hidden">
-            {NAV.map((n) => (
-              <button
-                key={n.id}
-                onClick={() => setTab(n.id)}
-                className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold ${
-                  tab === n.id
-                    ? "border-brand bg-brand text-brand-foreground"
-                    : "border-border bg-card text-muted-foreground"
-                }`}
-              >
-                {n.id}
-              </button>
-            ))}
-          </nav>
+          {/* Sibling pages, one tap away. The sidebar has them too, but a
+              horizontal row next to the content is what makes a section feel
+              like a place rather than a label — and on a phone it is the only
+              navigation there is. */}
+          {activeSection.tabs.length > 1 ? (
+            <div className="flex gap-1.5 overflow-x-auto border-t border-border/60 px-4 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {activeSection.tabs.map((t) => (
+                <button
+                  key={t.id}
+                  onClick={() => go(t.id)}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 text-[12px] font-semibold transition ${
+                    tab === t.id
+                      ? "border-brand bg-brand text-brand-foreground"
+                      : "border-border bg-card text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {t.id}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </header>
         {s.maintenance ? (
           <div className="bg-negative px-4 py-2 text-[12px] font-semibold text-negative-foreground">
@@ -917,11 +1103,15 @@ export default function AdminPage() {
             </>
           )}
 
-          {tab === "Keys & Access" && (
+          {/* ── Feed & credentials ──
+              The provider half of the old "Keys & Access". That page was four
+              unrelated jobs in one scroll: credentials, platform config,
+              operator accounts and your own password. */}
+          {tab === "Feed & credentials" && (
             <>
               <PageHead
-                title="Keys & Access"
-                sub="Provider credentials and console operators."
+                title="Feed & credentials"
+                sub="The provider tokens, the kill-switch, and whether the instrument master is healthy."
               />
               <Card
                 title="Upstox token"
@@ -988,16 +1178,30 @@ export default function AdminPage() {
                   "providerOff",
                   "halts all Upstox calls",
                 )}
-                <AdminUsers canEdit={canEdit} />
               </Card>
+              <InstrumentMaster />
+            </>
+          )}
+
+          {/* ── Operators ──
+              The other half: who may operate this console, and your own
+              password. Both are access control, and neither belongs next to a
+              provider API token. */}
+          {tab === "Operators" && (
+            <>
+              <PageHead
+                title="Operators"
+                sub="Who can open this console, what they may do, and your own credentials."
+              />
+              <AdminUsers canEdit={canEdit} />
               <ChangePassword />
             </>
           )}
 
-          {tab === "Polling & Cache" && (
+          {tab === "Caching & polling" && (
             <>
               <PageHead
-                title="Polling & Cache"
+                title="Caching & polling"
                 sub="Higher TTL = fewer Upstox calls. Client poll drives every live price."
               />
               <Card title="Cache TTL (ms)" sub="Per-endpoint cache windows.">
@@ -1034,11 +1238,11 @@ export default function AdminPage() {
             </>
           )}
 
-          {tab === "Scrips & Lists" && (
+          {tab === "Lists & tape" && (
             <>
               <PageHead
-                title="Scrips & Lists"
-                sub="Controls ticker tape and watchlist defaults everywhere."
+                title="Lists & tape"
+                sub="Controls the ticker tape and the watchlist rail everywhere they appear."
               />
               <Card
                 title="Ticker tape"
@@ -1079,11 +1283,11 @@ export default function AdminPage() {
             </>
           )}
 
-          {tab === "Charts & Market" && (
+          {tab === "Charts" && (
             <>
               <PageHead
-                title="Charts & Market"
-                sub="New-visitor defaults, candle history depth, market hours."
+                title="Charts"
+                sub="What a new chart opens with, and how much history it can load."
               />
               <Card
                 title="Chart defaults"
@@ -1168,6 +1372,19 @@ export default function AdminPage() {
                   ))}
                 </div>
               </Card>
+            </>
+          )}
+
+          {/* ── Market hours ──
+              Split out of the old "Charts & Market" grab-bag: the session
+              window governs whether an ORDER is accepted, which is trading,
+              not display. */}
+          {tab === "Market hours" && (
+            <>
+              <PageHead
+                title="Market hours"
+                sub="The fallback session window, and this year's exchange holidays."
+              />
               <Card
                 title="Market hours (IST)"
                 sub="Fallback window, used only when the exchange calendar is unavailable."
@@ -1187,11 +1404,11 @@ export default function AdminPage() {
             </>
           )}
 
-          {tab === "Trading & Risk" && (
+          {tab === "Trading rules" && (
             <>
               <PageHead
-                title="Trading & Risk"
-                sub="Funds, order guards, brokerage, KYC deposit gate."
+                title="Trading rules"
+                sub="Trading capital, order caps, margin, brokerage and the risk switches."
                 action={
                   <button
                     disabled={!canEdit}
@@ -1218,7 +1435,7 @@ export default function AdminPage() {
                     (100 / (Number(s.trading?.marginPct) || 5)) * 10,
                   ) / 10}
                   x leverage. Lower % = bigger positions = faster blow-ups.
-                  Override it for one client in Users &amp; KYC → OPEN.
+                  Override it for one client in Customers → open the account.
                 </Callout>
               </Card>
               <Card title="Risk switches" sub="Instant guards.">
@@ -1254,6 +1471,19 @@ export default function AdminPage() {
                   "/api/admin/mis-sweep",
                 )}
               </Card>
+            </>
+          )}
+
+          {/* ── Limits & KYC ──
+              Split out of "Trading & Risk", where it never belonged: these are
+              money-out rules, not risk rules, and they used to sit two cards
+              below the trading caps with a KYC card that looked identical. */}
+          {tab === "Limits & KYC" && (
+            <>
+              <PageHead
+                title="Limits & KYC"
+                sub="What a customer must fund before KYC unlocks, and whether KYC is required to take money out."
+              />
               <Card
                 title="KYC eligibility"
                 sub="How much a user must deposit before KYC unlocks for them."
@@ -1281,13 +1511,13 @@ export default function AdminPage() {
                       <span className="font-semibold">
                         ₹{Number(s.kyc.minDeposit).toLocaleString("en-IN")}
                       </span>
-                      . They see their own progress on the KYC page — for
+                      . They see their own progress on the wallet page — for
                       example “₹500 deposited · ₹24,500 left” — and the form
                       stays locked until the goal is met. Deposits are recorded
-                      server-side, either from the Funds panel or by you in
-                      Users &amp; KYC → <code>OPEN</code> →{" "}
-                      <em>Credit deposit</em>, and they also raise that
-                      user&apos;s trading capital.
+                      server-side: a verified gateway payment, or a credit from
+                      you in <strong>Customers</strong> → open a user →{" "}
+                      <em>Credit deposit</em>. Both count, and both also raise
+                      that user&apos;s trading capital.
                     </>
                   ) : (
                     <>
@@ -1332,7 +1562,7 @@ export default function AdminPage() {
                   This switch is the <strong>platform default</strong>. Each
                   account can be set to <em>Always require</em>,{" "}
                   <em>Never require</em> or <em>Follow the platform setting</em>{" "}
-                  in <strong>Users &amp; KYC</strong> → open a user →{" "}
+                  in <strong>Customers</strong> → open a user →{" "}
                   <em>Withdrawal KYC</em>. A per-user choice always wins, in
                   both directions, so you can waive it for one verified client
                   while the platform demands it — or keep it for one account
@@ -1352,9 +1582,10 @@ export default function AdminPage() {
                     </>
                   ) : (
                     <>
-                      Off — no gateway call is made and the Funds panel keeps
-                      its existing self-service funding button. Configure and
-                      switch it on under <strong>Finance</strong>.
+                      Off — no gateway call is made, and the wallet tells the
+                      customer deposits are unavailable instead of offering a
+                      button that cannot work. Configure and switch it on under{" "}
+                      <strong>Finance</strong>.
                     </>
                   )}
                 </Callout>
@@ -1401,16 +1632,16 @@ export default function AdminPage() {
           {tab === "Finance" && (
             <FinanceSection s={s} save={save} canEdit={canEdit} role={role} />
           )}
-          {tab === "Users & KYC" && <UsersSection canEdit={canEdit} />}
+          {tab === "Customers" && <UsersSection canEdit={canEdit} />}
           {tab === "Sessions" && (
             <SessionsSection canEdit={canEdit} selfEmail={email} />
           )}
 
-          {tab === "Content" && (
+          {tab === "Site & content" && (
             <>
               <PageHead
-                title="Content"
-                sub="Maintenance page + announcement banner for all users."
+                title="Site & content"
+                sub="Maintenance page and the announcement banner every user sees."
                 action={
                   <button
                     disabled={!canEdit}
@@ -1443,7 +1674,7 @@ export default function AdminPage() {
             </>
           )}
 
-          {tab === "Logs" && <LogsSection audit={audit} />}
+          {tab === "Audit log" && <LogsSection audit={audit} />}
         </main>
       </div>
       {drawer ? (
@@ -2653,7 +2884,7 @@ function SessionsSection({
   return (
     <div className="flex flex-col gap-4">
       <PageHead
-        title="Sessions"
+        title="Active sessions"
         sub="Every live console sign-in. Revoke any of them — changes are audit-logged."
         action={
           <>
@@ -3028,8 +3259,8 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
   return (
     <div className="flex flex-col gap-4">
       <PageHead
-        title="Users & KYC"
-        sub="Live client directory + KYC queue + panel operators."
+        title="Customers"
+        sub="Every account, their KYC standing, balances and per-user overrides."
         action={
           <button onClick={() => fetchDir(q)} className={btnGhost}>
             {busy ? "…" : "↻ Refresh"}
@@ -3696,8 +3927,8 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
                         <div className="text-[11px] leading-relaxed text-muted-foreground">
                           Deposits are what the KYC requirement is measured
                           against, and they also add to this user&apos;s trading
-                          capital. The user can fund themselves from the Funds
-                          panel; this control is for crediting them manually.
+                          capital. A customer funds themselves from their
+                          wallet; this control is for crediting them by hand.
                         </div>
                       </>
                     );
@@ -3708,7 +3939,10 @@ function UsersSection({ canEdit }: { canEdit: boolean }) {
             document.body,
           )
         : null}
-      <AdminUsers canEdit={canEdit} />
+      {/* Operator accounts deliberately do NOT live here any more. They were
+          rendered in both this page and the old "Keys & Access", which meant two
+          lists of the same thing with different affordances. They now have one
+          home: Platform → Operators. */}
     </div>
   );
 }

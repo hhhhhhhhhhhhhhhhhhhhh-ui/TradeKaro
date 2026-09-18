@@ -15,6 +15,7 @@ import {
   btnPrimary,
   btnGhost,
   StatusPill,
+  PageHead,
 } from "../_ui";
 
 // ── Finance ─────────────────────────────────────────────────────────────────
@@ -268,16 +269,22 @@ export default function FinanceSection({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-1.5">
+      <PageHead
+        title="Payments"
+        sub="The gateway, the orders it created, the pay-outs it owes, and every callback it sent — including the ones we could not act on."
+      />
+      {/* Second-level tabs, deliberately quieter than the section chips in the
+          header: those move you between pages, these move you within one. */}
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border pb-2">
         {SUBS.map((x) => (
           <button
             key={x}
             type="button"
             onClick={() => setSub(x)}
-            className={`min-h-[36px] rounded-full border px-3 text-[12.5px] font-semibold transition-colors ${
+            className={`min-h-[34px] rounded-md px-3 text-[12.5px] font-semibold transition-colors ${
               sub === x
-                ? "border-foreground bg-foreground text-background"
-                : "border-border text-muted-foreground hover:text-foreground"
+                ? "bg-brand/12 text-brand ring-1 ring-inset ring-brand/30"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
             }`}
           >
             {x}
