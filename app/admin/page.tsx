@@ -25,6 +25,7 @@ import {
   normalizeMinDeposit,
 } from "@/app/lib/kycGate";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
+import PaymentsRail from "./sections/PaymentsRail";
 import {
   Card,
   Kpi,
@@ -429,6 +430,29 @@ export default function AdminPage() {
   const text = (label: string, path: string) => (
     <Field label={label}>
       <input
+        value={get(s, path) ?? ""}
+        disabled={!canEdit}
+        onChange={(e) => set(path, e.target.value)}
+        onBlur={() => save({ [root(path)]: get(s, root(path)) } as Settings)}
+        className={inputCls}
+      />
+    </Field>
+  );
+
+  /**
+   * A secret, rendered masked.
+   *
+   * The server never returns the value — only `••••1234` — and treats anything
+   * that still looks masked as "leave it alone". So an untouched field saves the
+   * mask back and the stored secret survives, while a pasted value replaces it.
+   * There is deliberately no way to blank a secret from this form.
+   */
+  const secretInput = (label: string, path: string) => (
+    <Field label={label}>
+      <input
+        type="password"
+        autoComplete="off"
+        spellCheck={false}
         value={get(s, path) ?? ""}
         disabled={!canEdit}
         onChange={(e) => set(path, e.target.value)}
@@ -1285,6 +1309,53 @@ export default function AdminPage() {
                     </>
                   )}
                 </Callout>
+              </Card>
+              <Card
+                title="Online payments (Sunpays)"
+                sub="Real money in and out. Off by default — nothing changes for customers until this is switched on."
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  {toggle(
+                    "Accept online payments",
+                    "payments.enabled",
+                    "Lets a customer top up through the gateway. The ledger is credited only by a signature-verified callback",
+                  )}
+                  {toggle(
+                    "Allow payouts",
+                    "payments.payoutsEnabled",
+                    "Lets an operator send money out, capped at what the customer actually funded",
+                  )}
+                  {num("Minimum top-up ₹", "payments.minAmount")}
+                  {num("Maximum top-up ₹", "payments.maxAmount")}
+                  {text("API base URL", "payments.baseUrl")}
+                  {secretInput("Pay-in API key", "payments.payinApiKey")}
+                  {secretInput("Pay-in API secret", "payments.payinApiSecret")}
+                  {secretInput("Payout API key", "payments.payoutApiKey")}
+                  {secretInput("Payout API secret", "payments.payoutApiSecret")}
+                </div>
+                <Callout tone={s.payments?.enabled ? "warn" : "info"}>
+                  {s.payments?.enabled ? (
+                    <>
+                      Online payments are <strong>ON</strong> and this platform
+                      is taking real money. Before that is true of your
+                      business, the terms and the “no real funds are held or
+                      moved” notice in the footer have to change — they say the
+                      opposite today. A deposit is credited only when the
+                      gateway's signed callback arrives, and only up to the caps
+                      on the funding ledger (₹5,00,000 a time, ₹10,00,000
+                      lifetime per user).
+                    </>
+                  ) : (
+                    <>
+                      Off. No gateway call is made, the Funds panel keeps the
+                      existing self-service funding button, and every
+                      <code> /api/payments </code> route refuses. Secrets are
+                      never returned to this page — the dots above are the
+                      loaded key, and pasting over one replaces it.
+                    </>
+                  )}
+                </Callout>
+                <PaymentsRail />
               </Card>
             </>
           )}

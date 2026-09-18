@@ -20,7 +20,7 @@ import { db } from "./db";
 // used, so counting it would make everyone instantly eligible and the gate
 // meaningless.
 
-export type DepositMethod = "self" | "admin";
+export type DepositMethod = "self" | "admin" | "gateway";
 
 export type DepositRow = {
   id: number;

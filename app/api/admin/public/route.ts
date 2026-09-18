@@ -50,5 +50,13 @@ export async function GET() {
     kyc: {
       minDeposit: Number(s.kyc?.minDeposit) || 0,
     },
+    // Switches and limits only — the API keys and secrets never leave the
+    // server, and this object is fetched by every browser that loads a page.
+    payments: {
+      enabled: s.payments?.enabled === true,
+      payoutsEnabled: s.payments?.payoutsEnabled === true,
+      minAmount: Number(s.payments?.minAmount) || 0,
+      maxAmount: Number(s.payments?.maxAmount) || 0,
+    },
   });
 }

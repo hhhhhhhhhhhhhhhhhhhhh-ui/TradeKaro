@@ -95,6 +95,29 @@ export type AdminSettings = {
     /** Minimum total deposits before KYC can be completed. 0 = open to all. */
     minDeposit: number;
   };
+  /**
+   * Sunpays payment gateway.
+   *
+   * ⚠️ `enabled` is the master switch and defaults to OFF. While it is off,
+   * every /api/payments route refuses and the Funds panel shows the old
+   * self-service funding button — so deploying this code changes nothing for
+   * anybody until an operator deliberately turns it on.
+   *
+   * Both key pairs are secrets. They live here and in the server env, never in
+   * client code, and are never returned by /api/admin/public.
+   */
+  payments: {
+    enabled: boolean;
+    payinApiKey: string;
+    payinApiSecret: string;
+    payoutApiKey: string;
+    payoutApiSecret: string;
+    /** Overridable so the same build can be pointed at a sandbox. */
+    baseUrl: string;
+    minAmount: number;
+    maxAmount: number;
+    payoutsEnabled: boolean;
+  };
   updatedAt: number;
   updatedBy?: string;
 };
@@ -167,6 +190,17 @@ export const DEFAULT_SETTINGS: AdminSettings = {
   orderDefaults: { defaultQty: 1, confirmOrders: true },
   alertLimits: { maxPerUser: 20 },
   kyc: { minDeposit: 25000 },
+  payments: {
+    enabled: false,
+    payinApiKey: "",
+    payinApiSecret: "",
+    payoutApiKey: "",
+    payoutApiSecret: "",
+    baseUrl: "https://ttpay.business/api/public/v1",
+    minAmount: 100,
+    maxAmount: 100000,
+    payoutsEnabled: false,
+  },
   updatedAt: Date.now(),
 };
 
@@ -250,6 +284,20 @@ export async function getSettings(): Promise<AdminSettings> {
       ...((s as any)?.trading ?? (s as any)?.paper),
     },
     kyc: { ...DEFAULT_SETTINGS.kyc, ...(s as any)?.kyc },
+    payments: {
+      ...DEFAULT_SETTINGS.payments,
+      ...(s as any)?.payments,
+      // Same healing as the top-level switches above: a truthy object can never
+      // be turned back off, and this one gates whether real money can be taken.
+      enabled: bool(
+        (s as any)?.payments?.enabled,
+        DEFAULT_SETTINGS.payments.enabled,
+      ),
+      payoutsEnabled: bool(
+        (s as any)?.payments?.payoutsEnabled,
+        DEFAULT_SETTINGS.payments.payoutsEnabled,
+      ),
+    },
   };
 }
 

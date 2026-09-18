@@ -224,6 +224,53 @@ once on mount and never again, so prices were frozen at page-load time while the
 footnote called them live. Contracts with no quote are rendered greyed rather
 than filtered out, and counted in the header.
 
+## 3d. Payment gateway (Sunpays) — real money, switched OFF by default
+
+`app/lib/sunpay.ts` is the client and `app/lib/payments.ts` the order/callback
+store. Base `https://ttpay.business/api/public/v1`; auth is `x-api-key` plus
+`x-signature` = `HMAC-SHA256(raw body, secret)` as hex; and pay-in and payout have
+**separate key pairs**, which is the difference between working and "nothing ever
+confirms". Public docs: <https://ttpay.business/docs> (`/merchant/api-docs` is
+just the login gate).
+
+Webhook URLs to register in their dashboard:
+
+- `POST /api/payments/webhook/payin`
+- `POST /api/payments/webhook/payout`
+
+⚠️ **The signature is over the exact bytes.** `await req.text()` first and verify
+*that* string — `await req.json()` consumes the body and no signature can ever
+match afterwards. It fails as "every callback rejected", which points nowhere
+near the cause.
+
+⚠️ **Nothing a callback says becomes money.** The amount credited is the one on
+*our* `payment_orders` row, never `evt.amount`; a mismatch is recorded as
+`amount_mismatch` and credits nothing. The callback only says *which order*
+succeeded.
+
+Duplicates are the normal case — at-least-once delivery with up to 200 retries —
+so idempotency is enforced twice on purpose: the unique index on
+`payment_webhooks(txn_id, status)`, where the INSERT *is* the dedupe and losing
+the race is the duplicate signal, plus `recordDeposit`'s `idem` key derived from
+the same txn id. A webhook row records the outcome it finally reached
+(`credited`, `unknown_order`, `amount_mismatch`, …), never a hopeful `received`.
+
+Payouts are capped at `deposits − already paid out`. The account is seeded with
+virtual `start_cash`, so paying out "the balance" would send real money against
+money that never existed. ⚠️ That ceiling is a placeholder for a product
+decision, not a considered rule.
+
+`payments.enabled` defaults to **false**, and only a superadmin may change the
+keys or the switches. `/api/admin/settings` returns secrets only as `••••last4`
+and treats a masked value as "unchanged" — there is deliberately no way to blank
+one from the form.
+
+⚠️ **The platform currently tells customers the opposite.** The footer and
+`/terms` say *"no real funds are held or moved"* and *"not registered with
+SEBI"*. Enabling this makes both statements untrue, so the terms have to change
+and the regulatory question has to be answered first. The code ships off for that
+reason, not for want of working.
+
 ## 4. Backend on workers.dev (non-Upstox data)
 
 Base `app/components/apiURL.tsx`. Auth cookie `token` via `cookies-next`.

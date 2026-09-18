@@ -34,8 +34,8 @@ async function post(path, body, headers = {}) {
   return { status: r.status, json: j };
 }
 
-async function get(path) {
-  const r = await fetch(BASE + path, { redirect: "manual" });
+async function get(path, headers = {}) {
+  const r = await fetch(BASE + path, { redirect: "manual", headers });
   let j = null;
   try {
     j = await r.json();
@@ -1348,6 +1348,167 @@ await check("auth: a signed-in session opens a protected page", async () => {
       : pushedOn
         ? `${targets.length} pages opened, /login redirects to /dashboard`
         : `signed-in /login did not redirect (${loginPage.status})`,
+  };
+});
+
+// ── payment gateway ─────────────────────────────────────────────────────────
+// ⚠️ This suite must never turn the payment rail on, and must never write a test
+// key into the settings row: secrets can be replaced through the console but not
+// blanked, so a test key would permanently overwrite a real one with no way back.
+// So these checks assert only the invariants that hold WITHOUT credentials — and
+// those are the ones that matter most, because each of them is a way real money
+// could move when it should not.
+
+await check("payments: a forged callback is refused outright", async () => {
+  // A payload that asks for a very large successful payment, signed with
+  // nonsense. If this can ever return 200, an unauthenticated stranger can
+  // declare their own top-up settled.
+  const forged = JSON.stringify({
+    event: "payin.updated",
+    id: "txn_forged",
+    order_id: "TK-FORGED",
+    status: "success",
+    amount: 999999,
+  });
+  const tried = [];
+  for (const path of [
+    "/api/payments/webhook/payin",
+    "/api/payments/webhook/payout",
+  ]) {
+    const r = await fetch(BASE + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-signature": "deadbeef",
+      },
+      body: forged,
+    });
+    tried.push({ path, status: r.status });
+  }
+  // 401 when the rail is configured (signature rejected), 503 when it is not.
+  // Both are refusals. A 200 means forged money, a 500 means the handler threw
+  // instead of checking.
+  const bad = tried.filter((t) => t.status !== 401 && t.status !== 503);
+  return {
+    ok: !bad.length,
+    info: bad.length
+      ? bad.map((b) => `${b.path}->${b.status}`).join(" ")
+      : tried.map((t) => `${t.path.split("/").pop()}=${t.status}`).join(" · "),
+  };
+});
+
+await check("payments: a top-up needs a session", async () => {
+  // Without a session, categorically refused.
+  const anon = await post("/api/payments/payin", { amount: 100 });
+  if (anon.status !== 401)
+    return { ok: false, info: `no-session top-up returned ${anon.status}` };
+
+  // With a session but the rail off, it must refuse too — and the amount is
+  // checked against the live switch rather than assumed, so this stays correct
+  // on the day someone turns payments on.
+  const pub = await get("/api/admin/public");
+  if (pub.json?.payments?.enabled)
+    return { ok: true, info: "rail is ON — only the 401 was assertable" };
+
+  const r = await post(
+    "/api/payments/payin",
+    { amount: 100 },
+    { Authorization: "Bearer " + accountToken },
+  );
+  // 503 is the correct refusal here (the rail is unavailable), so it counts as
+  // passing alongside the 4xx family. Only a 200 would be a failure.
+  return {
+    ok:
+      r.status !== 200 &&
+      (r.status === 503 || (r.status >= 400 && r.status < 500)),
+    info: `anon=401 authed-off=${r.status}${r.json?.error ? " " + r.json.error : ""}`,
+  };
+});
+
+await check(
+  "payments: public config carries switches, never secrets",
+  async () => {
+    const r = await get("/api/admin/public");
+    const p = r.json?.payments;
+    if (!p)
+      return { ok: false, info: "no payments block on the public config" };
+    const want = ["enabled", "maxAmount", "minAmount", "payoutsEnabled"].sort();
+    const got = Object.keys(p).sort();
+    const leaked = /secret|apikey/i.test(JSON.stringify(p));
+    return {
+      ok: got.join(",") === want.join(",") && !leaked,
+      info:
+        got.join(",") === want.join(",")
+          ? `${got.join(", ")}${leaked ? " — LEAKED" : ""}`
+          : `unexpected fields: ${got.join(", ")}`,
+    };
+  },
+);
+
+await check(
+  "payments: the console never returns the stored secret",
+  async () => {
+    const login = await fetch(BASE + "/api/admin/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
+    });
+    const cookie = ((login.headers.getSetCookie?.() || [])
+      .join("; ")
+      .match(/admin_token=([^;]+)/) || [])[1];
+    if (!cookie)
+      return {
+        ok: false,
+        info: "skipped — could not sign in to the admin console",
+      };
+
+    const r = await get("/api/admin/settings", {
+      Cookie: "admin_token=" + cookie,
+    });
+    const p = r.json?.settings?.payments || {};
+    // The masked form is `••••last4`; anything else means a real key reached the
+    // browser, where it would sit in the DOM and in every proxy log.
+    const leak = [
+      "payinApiKey",
+      "payinApiSecret",
+      "payoutApiKey",
+      "payoutApiSecret",
+    ].filter((k) => p[k] && !String(p[k]).startsWith("••••"));
+    return {
+      ok: !leak.length,
+      info: leak.length
+        ? `plaintext in settings response: ${leak.join(", ")}`
+        : `masked (${p.payinApiKey || "pay-in key not set yet"})`,
+    };
+  },
+);
+
+await check("payments: a repeated deposit idem credits once", async () => {
+  // The webhook's second line of defence. A callback replay is the normal case
+  // — the gateway retries up to 200 times — so the ledger itself has to refuse a
+  // repeated key, not merely the webhook log.
+  const h = { Authorization: "Bearer " + accountToken };
+  const idem = "smoke-" + randomUUID();
+  const a = await post(
+    "/api/trade/deposit",
+    { amount: 100, note: "smoke idem", idem },
+    h,
+  );
+  const b = await post(
+    "/api/trade/deposit",
+    { amount: 100, note: "smoke idem", idem },
+    h,
+  );
+  const ok =
+    a.status === 200 &&
+    b.status === 200 &&
+    b.json?.duplicate === true &&
+    Number(a.json?.deposited) === Number(b.json?.deposited);
+  return {
+    ok,
+    info: ok
+      ? `credited once at ₹${a.json?.deposited}, replay flagged duplicate`
+      : `first=${a.status} second=${b.status} dup=${b.json?.duplicate} ${a.json?.deposited}->${b.json?.deposited}`,
   };
 });
 

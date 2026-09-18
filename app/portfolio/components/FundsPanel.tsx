@@ -8,6 +8,7 @@ import {
   useKycGate,
   useTradingAccount,
 } from "@/app/lib/trading";
+import { usePublicConfig } from "@/app/hooks/usePublicConfig";
 import { money, moneySigned } from "@/app/lib/format";
 
 // Real wallet ledger: seeded capital + deposits − what the fills consumed.
@@ -22,8 +23,12 @@ type Deposit = { id: number; ts: number; amount: number; method: string };
 export default function FundsPanel(props: { remainingCash: number }) {
   const acct = useTradingAccount();
   const gate = useKycGate();
+  const cfg = usePublicConfig();
+  const payCfg = cfg.payments;
   const [amt, setAmt] = useState(10000);
   const [busy, setBusy] = useState(false);
+  const [payBusy, setPayBusy] = useState(false);
+  const [pending, setPending] = useState(0);
   const [log, setLog] = useState<Deposit[]>([]);
 
   // Unified broker-style wallet: seeded capital + deposits − fills − charges.
@@ -48,6 +53,78 @@ export default function FundsPanel(props: { remainingCash: number }) {
   useEffect(() => {
     void loadLog();
   }, [loadLog]);
+
+  // Pending gateway orders. Shown because the interesting failure is a customer
+  // who paid and saw nothing change — that state is "pending" here, and being
+  // able to see it beats being told "it will come through".
+  useEffect(() => {
+    if (!payCfg?.enabled) return;
+    let alive = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/payments/payin", { cache: "no-store" });
+        if (!r.ok) return;
+        const j = await r.json();
+        const orders: any[] = Array.isArray(j?.orders) ? j.orders : [];
+        if (alive)
+          setPending(
+            orders.filter(
+              (o) => o.status === "pending" || o.status === "processing",
+            ).length,
+          );
+      } catch {
+        /* the panel works without this line */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [payCfg?.enabled]);
+
+  /**
+   * Pay through the gateway.
+   *
+   * The browser never credits anything: it asks the server to create an order
+   * and then leaves for the hosted checkout page. The balance changes only when
+   * the gateway calls us back with a signature we can verify.
+   */
+  async function payOnline() {
+    const amount = Number(amt);
+    const min = Number(payCfg?.minAmount) || 0;
+    const max = Number(payCfg?.maxAmount) || 0;
+    if (!(amount > 0)) {
+      sileo.error({ title: "Enter an amount above zero" });
+      return;
+    }
+    if (min && amount < min) {
+      sileo.error({ title: `Minimum online top-up is ${money(min)}` });
+      return;
+    }
+    if (max && amount > max) {
+      sileo.error({ title: `Maximum online top-up is ${money(max)}` });
+      return;
+    }
+    setPayBusy(true);
+    try {
+      const r = await fetch("/api/payments/payin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount, method: "upi" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || !j?.checkoutUrl) {
+        setPayBusy(false);
+        sileo.error({ title: j?.error || "Could not start the payment" });
+        return;
+      }
+      // Full navigation, not a popup — the customer has to complete a UPI or
+      // bank step, and mobile browsers block popups for exactly this.
+      window.location.href = j.checkoutUrl;
+    } catch (e: any) {
+      setPayBusy(false);
+      sileo.error({ title: e?.message || "Could not start the payment" });
+    }
+  }
 
   async function submit() {
     const amount = Number(amt);
@@ -90,12 +167,30 @@ export default function FundsPanel(props: { remainingCash: number }) {
           >
             {busy ? "ADDING…" : "DEPOSIT"}
           </button>
+          {payCfg?.enabled ? (
+            <button
+              disabled={payBusy}
+              onClick={payOnline}
+              title={`Pay online by UPI or bank transfer (${money(
+                Number(payCfg.minAmount) || 0,
+              )} – ${money(Number(payCfg.maxAmount) || 0)})`}
+              className="pressable h-11 border border-border px-4 font-mono text-[12px] font-bold disabled:opacity-50"
+            >
+              {payBusy ? "OPENING…" : "PAY ONLINE"}
+            </button>
+          ) : null}
         </div>
       </div>
 
       <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground">
         <span className="text-foreground/70">Deposited {money(deposited)}</span>
         <span>Capital deployed {money(spent)}</span>
+        {pending > 0 ? (
+          <span className="text-muted-foreground">
+            {pending} online payment{pending === 1 ? "" : "s"} awaiting
+            confirmation
+          </span>
+        ) : null}
         {acct ? (
           <>
             <span className="text-foreground/70">

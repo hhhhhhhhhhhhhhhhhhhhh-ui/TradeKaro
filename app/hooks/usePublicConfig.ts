@@ -50,6 +50,16 @@ export type PublicConfig = {
     /** Minimum total deposits before KYC may be completed. 0 = open to all. */
     minDeposit: number;
   };
+  /**
+   * Payment gateway availability. Switches and limits only — the API keys and
+   * secrets are server-side and are never part of this payload.
+   */
+  payments: {
+    enabled: boolean;
+    payoutsEnabled: boolean;
+    minAmount: number;
+    maxAmount: number;
+  };
 };
 
 const FALLBACK: PublicConfig = {
@@ -111,6 +121,12 @@ const FALLBACK: PublicConfig = {
   },
   alertLimits: { maxPerUser: 20 },
   kyc: { minDeposit: 25000 },
+  payments: {
+    enabled: false,
+    payoutsEnabled: false,
+    minAmount: 100,
+    maxAmount: 100000,
+  },
 };
 
 let cached: PublicConfig | null = null;

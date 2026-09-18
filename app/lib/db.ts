@@ -14,7 +14,7 @@ const g = globalThis as any;
 // Bump whenever a table or index is added below. Next dev reuses the cached
 // handle across hot reloads, so the revision check re-applies this idempotent
 // DDL and new tables exist without restarting the server.
-const SCHEMA_REV = 7;
+const SCHEMA_REV = 8;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -148,6 +148,73 @@ const SCHEMA = `
     -- The audit log only ever grows and is read newest-first by the admin
     -- views; keep a timestamp index next to it.
     CREATE INDEX IF NOT EXISTS ix_audit_at ON audit(at);
+    -- ── Payment gateway (Sunpays) ──────────────────────────────────────────
+    -- One row per checkout we asked the gateway to create. We store our own
+    -- order_id BEFORE we can know the outcome, because the webhook may arrive
+    -- before the HTTP response that created it — a real race, not a theoretical
+    -- one, and the row is what the callback matches against.
+    CREATE TABLE IF NOT EXISTS payment_orders (
+      order_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      currency TEXT NOT NULL,
+      method TEXT,
+      status TEXT NOT NULL,
+      txn_id TEXT,
+      checkout_url TEXT,
+      utr TEXT,
+      raw TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_payment_orders_user
+      ON payment_orders(user_id, created_at);
+    -- Money out. Deliberately a separate table from pay-ins: separate key pair,
+    -- separate lifecycle, separate failure modes, and an audit question that is
+    -- always "what did we pay out" rather than "what did we take in".
+    CREATE TABLE IF NOT EXISTS payment_payouts (
+      payout_id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      fee REAL,
+      net_amount REAL,
+      currency TEXT NOT NULL,
+      method TEXT NOT NULL,
+      beneficiary_name TEXT,
+      beneficiary_account TEXT,
+      ifsc TEXT,
+      bank_name TEXT,
+      status TEXT NOT NULL,
+      utr TEXT,
+      actor TEXT,
+      note TEXT,
+      raw TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_payment_payouts_user
+      ON payment_payouts(user_id, created_at);
+    -- Every webhook delivery we see. The gateway retries up to 200 times, so
+    -- duplicates are the normal case rather than an exception, and "have we
+    -- already processed this?" has to be answerable from the database rather
+    -- than from a variable that dies with the process.
+    --
+    -- The unique index is the idempotency guarantee itself: a repeat of the same
+    -- transaction in the same state cannot be inserted twice. A genuinely new
+    -- state (pending -> success) has a different key and is allowed through.
+    CREATE TABLE IF NOT EXISTS payment_webhooks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ts INTEGER NOT NULL,
+      event TEXT NOT NULL,
+      txn_id TEXT,
+      ref_id TEXT,
+      status TEXT,
+      signature_ok INTEGER NOT NULL,
+      outcome TEXT NOT NULL,
+      raw TEXT NOT NULL
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_payment_webhooks_state
+      ON payment_webhooks(txn_id, status) WHERE txn_id IS NOT NULL;
 `;
 
 // Columns added after the first release. `ALTER TABLE ADD COLUMN` is not
