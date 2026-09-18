@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "crypto";
 import { db } from "@/app/lib/db";
 import {
+  accountExists,
   ledgerKeyFor,
   tokenFromRequest,
   verifyToken,
@@ -24,7 +25,12 @@ async function keyFor(req: NextRequest): Promise<string | null> {
   const token = await tokenFromRequest(req);
   if (!token) return null;
   const claims = await verifyToken(token);
-  if (claims?.id) return ledgerKeyFor(claims.id);
+  if (claims?.id) {
+    // Signed AND still real. A deleted account must not keep a working key —
+    // without this the request fell through to the hash-the-token branch and
+    // quietly re-created an empty ledger under a brand-new id.
+    return accountExists(claims.id) ? ledgerKeyFor(claims.id) : null;
+  }
   return createHash("sha256").update(token).digest("hex").slice(0, 32);
 }
 

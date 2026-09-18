@@ -66,6 +66,37 @@ export async function getUsers(): Promise<User[]> {
   return rows.map((r) => rowToUser(r, wl.get(r.id) ?? []));
 }
 
+/** Does this account still exist? */
+export function accountExists(id: string): boolean {
+  if (!id) return false;
+  const row = db.prepare("SELECT id FROM users WHERE id = ?").get(String(id));
+  return !!row;
+}
+
+/**
+ * A session that is BOTH correctly signed AND still belongs to a real account.
+ *
+ * ⚠️ `verifyToken` is deliberately stateless: it checks a JWT's signature and
+ * expiry and nothing else, which is what keeps these hot paths off the database.
+ * The cost is that DELETING AN ACCOUNT DOES NOT END ITS SESSION. The token stays
+ * valid until it expires, the identity cookies (`username`, `email`, `clientID`)
+ * keep rendering a signed-in customer, and `ensureAccount` cheerfully re-creates
+ * a ledger row for an id that no longer exists — so a wiped account carries on
+ * browsing an empty shell of itself. That is exactly what happened after the
+ * production wipe.
+ *
+ * Anything that reads or moves account state uses this instead, so a deleted
+ * account is logged out rather than merely emptied. Rotating `AUTH_SECRET` is
+ * still the way to end every session at once.
+ */
+export async function liveToken(
+  token: string | undefined,
+): Promise<{ id: string; username: string; email: string } | null> {
+  const claims = await verifyToken(token);
+  if (!claims) return null;
+  return accountExists(claims.id) ? claims : null;
+}
+
 // Signing secret: env wins (works in edge middleware too); otherwise a
 // generated file keeps local sessions valid across restarts.
 export async function authSecret(): Promise<string> {

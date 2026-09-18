@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tokenFromRequest, verifyToken } from "@/app/lib/authStore";
+import { tokenFromRequest, liveToken } from "@/app/lib/authStore";
 import { accountKey, ensureAccount } from "@/app/lib/tradingServer";
 import {
   accountInUse,
@@ -24,7 +24,7 @@ export const dynamic = "force-dynamic";
 async function me(req: NextRequest) {
   const token = await tokenFromRequest(req);
   if (!token) return null;
-  const c = await verifyToken(token);
+  const c = await liveToken(token);
   return c?.id ? { id: String(c.id), email: c.email } : null;
 }
 

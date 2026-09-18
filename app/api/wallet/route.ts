@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { tokenFromRequest, verifyToken } from "@/app/lib/authStore";
+import { tokenFromRequest, liveToken } from "@/app/lib/authStore";
 import { runtimeSettings } from "@/app/lib/adminRuntime";
 import {
   accountKey,
@@ -28,7 +28,9 @@ export const dynamic = "force-dynamic";
 async function me(req: NextRequest) {
   const token = await tokenFromRequest(req);
   if (!token) return null;
-  const c = await verifyToken(token);
+  // `liveToken`, not `verifyToken`: a signed session whose account no longer
+  // exists must be refused, not served an empty wallet.
+  const c = await liveToken(token);
   return c?.id ? { id: String(c.id), email: c.email } : null;
 }
 
