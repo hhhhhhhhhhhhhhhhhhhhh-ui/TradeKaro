@@ -5,26 +5,31 @@ import {
   ensureAccount,
   publicAccount,
 } from "@/app/lib/tradingServer";
-import {
-  MAX_SINGLE_DEPOSIT,
-  depositsFor,
-  recordDeposit,
-} from "@/app/lib/deposits";
+import { MAX_SINGLE_DEPOSIT, depositsFor } from "@/app/lib/deposits";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// Self-service funding.
+// ── Deposits: no user-facing writer ─────────────────────────────────────────
 //
-// An earlier version of this app had an ADD button in the Funds panel that
-// wrote straight to localStorage. It was removed because the server never saw
-// the money — you could type in ₹10,00,00,000 and the ledger happily ignored
-// it, which made every downstream number a lie.
+// ⚠️ POST used to credit the ledger directly ("self-service funding"). That is
+// removed, deliberately and permanently, because a deposit drives BOTH trading
+// capital and the KYC requirement — so a signed-in user could credit themselves
+// ₹5,00,000 at a time, clear the ₹25,000 KYC threshold in one click, and then
+// ask for a real withdrawal that Sunpay would really pay. Money in has to come
+// from money in.
 //
-// This route is the honest version of that button: the amount is validated and
-// appended to the server-side deposit ledger, and because deposits are part of
-// trading capital it actually buys trading room. It is also what the KYC
-// requirement is measured against.
+// Deposits now have exactly two writers, both server-side and neither of them
+// reachable by a customer:
+//
+//   * a VERIFIED Sunpay callback   — POST /api/payments/webhook/payin
+//   * an operator credit           — POST /api/admin/clients
+//
+// `recordDeposit` refuses `method: "self"` as well, so this cannot be reopened
+// by a future caller. GET stays: the wallet shows the history.
+//
+// The remaining version of this route is a signpost, not an error to be
+// debugged — it says where to go instead.
 
 async function me(req: NextRequest) {
   const token = await tokenFromRequest(req);
@@ -33,7 +38,7 @@ async function me(req: NextRequest) {
   return c?.id ? { id: String(c.id), email: c.email } : null;
 }
 
-/** Deposit history + current standing, for the Funds panel. */
+/** Deposit history + current standing. */
 export async function GET(req: NextRequest) {
   const who = await me(req);
   if (!who)
@@ -52,25 +57,13 @@ export async function POST(req: NextRequest) {
   const who = await me(req);
   if (!who)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const body = await req.json().catch(() => ({}));
-  const key = accountKey(who.id);
-  await ensureAccount(key);
-
-  const res = recordDeposit({
-    key,
-    amount: Number(body?.amount),
-    method: "self",
-    note: typeof body?.note === "string" ? body.note : null,
-    idem: typeof body?.idem === "string" ? body.idem : null,
-  });
-  if (!res.ok)
-    return NextResponse.json({ error: res.error }, { status: res.status });
-
-  return NextResponse.json({
-    ok: true,
-    duplicate: res.duplicate,
-    deposited: res.total,
-    account: await publicAccount(key, who.email),
-  });
+  return NextResponse.json(
+    {
+      error:
+        "Direct deposits are disabled. Add funds from your wallet — the balance " +
+        "is credited only once the payment gateway confirms it.",
+      wallet: "/wallet",
+    },
+    { status: 410 },
+  );
 }

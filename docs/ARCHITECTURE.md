@@ -334,7 +334,53 @@ Operator actions all live on `/admin` → **Finance** → Pay-outs (the queue, w
 Approve & pay / Reject + reason, and a manual payout that must name an account
 the customer owns — there is no free-text beneficiary anywhere in the console).
 `minWithdraw` / `maxWithdraw` are admin settings, defaults ₹500 / ₹2,00,000.
+### The wallet: money in has to be money in
 
+`/wallet` is the only place money moves. It was a tab inside `/portfolio`, which
+is not where anyone looks for their balance, and it sat next to a button that
+credited the ledger for free — see below.
+
+`app/api/wallet/route.ts` answers the whole page in one read (balance, limits,
+KYC, destinations, both histories). One endpoint on purpose: four endpoints mean
+the page can render a balance that disagrees with the list under it, and that is
+the mismatch that makes people distrust a money screen.
+
+**Two writers, neither reachable by a customer:**
+
+| Writer | Method | Where |
+| --- | --- | --- |
+| A verified gateway callback | `gateway` | `POST /api/payments/webhook/payin` |
+| An operator credit | `admin` | `POST /api/admin/clients` |
+
+⚠️ **`POST /api/trade/deposit` used to be a third writer, and a user-facing one.**
+Any signed-in user could credit their own ledger — up to ₹5,00,000 per request,
+₹10,00,000 lifetime — and because a deposit drove BOTH trading capital AND the
+KYC requirement, two clicks cleared the ₹25,000 KYC threshold and unlocked a real
+withdrawal against money that never arrived. Three locks now:
+
+1. The route answers **410 Gone** and points at the wallet.
+2. `recordDeposit` refuses `method: "self"` at the source, so a future caller
+   cannot reopen it by re-exposing an endpoint.
+3. `self` rows are **practice credits**: they still count as trading capital (the
+   paper book keeps working, including for accounts that already have them) but
+   they are excluded from `withdrawable` and from the KYC requirement.
+
+**Withdrawable is the wallet, not the equity.** Every fill in this app is
+simulated — the market data is real, there is no broker and no counterparty — so
+trading P&L is scorekeeping. Deriving `withdrawable` from it would let a customer
+deposit ₹500, win ₹5,000 on the paper book and withdraw ₹5,500 of real money the
+platform never earned.
+
+```
+wallet       = verifiedDeposited − withdrawn        ← what may be paid out
+trading free = seeded + allDeposits + P&L − charges − margin − withdrawn
+```
+
+A request holds its funds the moment it is made (`withdrawnTotal` counts every
+unreleased row), which is what stops the same balance being requested twice.
+`publicAccount` exposes `walletDeposited`, `walletBalance`, `practiceCredit` and
+`withdrawable`; `/api/wallet` re-exposes the same numbers rather than recomputing
+them, and a smoke check asserts the two endpoints agree.
 ### Is KYC required to withdraw? Two levels, because the honest answer differs
 
 `app/lib/withdrawKyc.ts` is the whole rule and imports nothing, so the panel and

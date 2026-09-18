@@ -2,16 +2,23 @@ import { db } from "./db";
 
 // ── Deposits ────────────────────────────────────────────────────────────────
 //
-// The amount a user has actually funded. Two writers, both server-side:
+// Money that ACTUALLY ARRIVED, and nothing else. Two writers, both
+// server-side:
 //
-//   * the user, through POST /api/trade/deposit (self-service)
-//   * an operator, through POST /api/admin/clients (a manual credit)
+//   * the gateway, through a verified Sunpay callback        (method: gateway)
+//   * an operator, through POST /api/admin/clients           (method: admin)
 //
-// Nothing else may write here, and no client ever supplies a running total.
-// This matters because the total gates KYC: if the browser could report its own
-// figure, anybody could unlock KYC by editing localStorage.
+// ⚠️ There is deliberately NO user-facing writer. `method: "self"` used to be
+// one: a signed-in user could credit their own ledger for free, and because a
+// deposit drives BOTH trading capital and the KYC requirement, that was a tap
+// that minted money. Anything hitting `recordDeposit` with `self` is refused
+// here as well as at the route, so a future caller cannot quietly reopen it.
 //
-// A deposit does two things at once:
+// Historical `self` rows still exist and are still counted as trading capital —
+// they are practice credits. They are NOT withdrawable and do NOT count toward
+// KYC, because a payout is real money and a practice click is not.
+//
+// A real deposit does two things at once:
 //   1. counts toward the admin's KYC deposit requirement, and
 //   2. raises trading capital — see `tradingCapital()` in tradingServer.ts.
 //
@@ -21,6 +28,13 @@ import { db } from "./db";
 // meaningless.
 
 export type DepositMethod = "self" | "admin" | "gateway";
+
+/** Methods that represent money which actually arrived. */
+export const REAL_DEPOSIT_METHODS = ["admin", "gateway"] as const;
+
+export function isRealDepositMethod(m: unknown): boolean {
+  return (REAL_DEPOSIT_METHODS as readonly string[]).includes(String(m || ""));
+}
 
 export type DepositRow = {
   id: number;
@@ -77,6 +91,45 @@ export function depositedTotals(): Map<string, number> {
 }
 
 /**
+ * Total that actually arrived — gateway callbacks and operator credits.
+ *
+ * This is the number the KYC requirement is measured against and the number the
+ * wallet is allowed to pay out. Practice credits (`self`) are excluded on
+ * purpose: they were never money, so they must not unlock KYC and must not be
+ * withdrawable.
+ */
+export function verifiedDepositedTotal(key: string): number {
+  const r = db
+    .prepare(
+      "SELECT COALESCE(SUM(amount), 0) AS t FROM trade_deposits WHERE user_id = ? AND method IN ('admin','gateway')",
+    )
+    .get(key) as { t: number } | undefined;
+  return Number(r?.t) || 0;
+}
+
+/** Every account's real total in one query, for the directory and the console. */
+export function verifiedDepositedTotals(): Map<string, number> {
+  const rows = db
+    .prepare(
+      "SELECT user_id, COALESCE(SUM(amount), 0) AS t FROM trade_deposits WHERE method IN ('admin','gateway') GROUP BY user_id",
+    )
+    .all() as { user_id: string; t: number }[];
+  const out = new Map<string, number>();
+  for (const r of rows) out.set(String(r.user_id), Number(r.t) || 0);
+  return out;
+}
+
+/** Practice credits only — spendable on the paper book, never withdrawable. */
+export function practiceCreditTotal(key: string): number {
+  const r = db
+    .prepare(
+      "SELECT COALESCE(SUM(amount), 0) AS t FROM trade_deposits WHERE user_id = ? AND method NOT IN ('admin','gateway')",
+    )
+    .get(key) as { t: number } | undefined;
+  return Number(r?.t) || 0;
+}
+
+/**
  * Append a deposit. Returns the new total.
  *
  * `idem` makes retries safe: the same key from the same account is absorbed
@@ -94,6 +147,18 @@ export function recordDeposit(input: {
 }): DepositResult {
   const key = String(input.key || "");
   if (!key) return { ok: false, error: "No account", status: 400 };
+
+  // The one method a customer could choose for themselves, and therefore the one
+  // method that must never be writable again. Refused at the source as well as
+  // at the route so a future caller cannot quietly reopen the tap.
+  if (input.method === "self")
+    return {
+      ok: false,
+      error:
+        "Direct deposits are disabled — add funds from your wallet and they are " +
+        "credited by the gateway.",
+      status: 410,
+    };
 
   const amount = Number(input.amount);
   if (!Number.isFinite(amount) || amount <= 0)

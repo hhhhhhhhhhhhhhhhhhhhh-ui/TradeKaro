@@ -14,13 +14,19 @@ import {
   FiBarChart2,
   FiLogIn,
   FiBox,
+  FiCreditCard,
 } from "react-icons/fi";
 
 // Signed-in dock: the account surfaces a trader jumps between all day.
+//
+// Six, not five: WALLET is where money actually moves (deposit, withdraw, saved
+// destinations) and it was previously buried as a tab inside the portfolio —
+// which is not where anyone looks for their balance. Targets stay 60px tall.
 const AUTH_TABS = [
   { href: "/watchlist", label: "LIST", Icon: FiStar },
   { href: "/portfolio/orders", label: "ORDERS", Icon: FiClipboard },
   { href: "/positions", label: "POSITION", Icon: FiBriefcase, hero: true },
+  { href: "/wallet", label: "WALLET", Icon: FiCreditCard },
   { href: "/options", label: "OPTS", Icon: FiTrendingUp },
   { href: "/profile", label: "PROFILE", Icon: FiUser },
 ];
@@ -86,7 +92,7 @@ export default function MobileBottomNav() {
       <div className="px-3 pointer-events-auto">
         <div className="mx-auto max-w-[520px] border border-border bg-card/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
           <div className="h-[2px] w-full brand-gradient" />
-          <div className={hasSession ? "grid grid-cols-5" : "grid grid-cols-6"}>
+          <div className="grid grid-cols-6">
             {TABS.map(({ href, label, Icon, hero }) => {
               const active = isActiveTab(path, href);
               if (hero) {

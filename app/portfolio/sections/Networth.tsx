@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from "react";
 import HoldingTable from "../components/HoldingTable";
 import AnalyticsPanel from "../components/AnalyticsPanel";
-import FundsPanel from "../components/FundsPanel";
+import { NavTransition } from "@/app/components/navbar/NavTransition";
 import LivePnlStrip from "@/app/components/LivePnlStrip";
 import { money } from "@/app/lib/format";
 import { useLivePnl } from "@/app/hooks/useLivePnl";
@@ -12,15 +12,16 @@ import {
   getWalletBalance,
   setBackendCash,
 } from "@/app/lib/trading";
-import { NavTransition } from "@/app/components/navbar/NavTransition";
 import Loading from "@/app/components/Loading";
 
 export default function Networth(props: any) {
   const { data, profitDetails, loading } = props;
 
   // Positions now live on their own page (/positions), so this screen covers
-  // holdings, orders and funds only.
-  const [tab, setTab] = useState<"HOLDINGS" | "ORDERS" | "FUNDS">("HOLDINGS");
+  // holdings and orders only — money has its own page now, because a Funds tab
+  // buried inside a portfolio is not somewhere a customer thinks to look for
+  // their balance.
+  const [tab, setTab] = useState<"HOLDINGS" | "ORDERS">("HOLDINGS");
   const [paperRev, setPaperRev] = useState(0);
   // Counts below come from localStorage, which the server cannot see. Render
   // them as 0 until mounted so hydration matches (was a real mismatch bug).
@@ -138,7 +139,6 @@ export default function Networth(props: any) {
       id: "ORDERS",
       label: `Orders · ${mounted ? unifiedOrders.length : 0}`,
     },
-    { id: "FUNDS", label: "Funds" },
   ] as const;
 
   const allocTop = sortedScrips.slice(0, 5);
@@ -185,9 +185,14 @@ export default function Networth(props: any) {
             <div className="display-num text-xl font-bold sm:text-2xl">
               {money(wallet)}
             </div>
-            <div className="text-[11.5px] text-muted-foreground">
-              Broker {money(data.remainingCash || 0)}
-            </div>
+            {/* Money lives on its own page now. The link is the whole point of
+                this card: a balance with no way to act on it is a dead end. */}
+            <NavTransition
+              href="/wallet"
+              className="pressable mt-1 inline-flex h-8 items-center rounded-md border border-border bg-card px-3 font-mono text-[11px] font-bold text-foreground/80"
+            >
+              ADD / WITHDRAW →
+            </NavTransition>
           </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -397,11 +402,6 @@ export default function Networth(props: any) {
               </div>
             </>
           )}
-        </div>
-      )}
-      {tab === "FUNDS" && (
-        <div className="space-y-3">
-          <FundsPanel remainingCash={data.remainingCash || 0} />
         </div>
       )}
     </div>

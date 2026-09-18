@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "./db";
 import { getClients, type ClientRecord } from "./clientRegistry";
-import { depositedTotals } from "./deposits";
+import { depositedTotals, verifiedDepositedTotals } from "./deposits";
 import { normalizeWithdrawKyc, type WithdrawKycMode } from "./withdrawKyc";
 
 // ── Unified client directory ────────────────────────────────────────────────
@@ -182,7 +182,9 @@ export async function getDirectory(): Promise<DirectoryUser[]> {
 
   // One query for the whole directory rather than one per row. The ledger's
   // user_id is the account key (`u-<users.id>`, see authStore.ledgerKeyFor).
-  const funded = depositedTotals();
+  // Verified totals: the panel's "funded" figure is what the KYC gate is
+  // measured against, so it must not count practice credits.
+  const funded = verifiedDepositedTotals();
   for (const u of out) u.deposited = funded.get(`u-${u.id}`) ?? 0;
 
   return out.sort((a, b) => activityAt(b) - activityAt(a));

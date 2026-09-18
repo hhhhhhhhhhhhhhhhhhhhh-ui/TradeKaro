@@ -358,35 +358,11 @@ export function getWalletBalance(backendCash: number): number {
 
 // ── Deposits & the KYC gate ────────────────────────────────────────────────
 
-/**
- * Fund the account. The server is the only writer: it validates the amount,
- * appends it to the deposit ledger, and returns the new account so the wallet and
- * the KYC progress move in the same round trip. `idem` makes a double-submit
- * harmless — the same key is absorbed rather than credited twice.
- */
-export async function depositFunds(
-  amount: number,
-): Promise<{ ok: boolean; error?: string; deposited?: number }> {
-  if (typeof window === "undefined" || !authToken())
-    return { ok: false, error: "Sign in to add funds" };
-  try {
-    const r = await fetch("/api/trade/deposit", {
-      method: "POST",
-      headers: authHeaders(),
-      body: JSON.stringify({
-        amount,
-        idem: `dep-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      }),
-    });
-    const j = await r.json().catch(() => ({}));
-    if (!r.ok)
-      return { ok: false, error: String(j?.error || "Deposit was refused") };
-    if (j?.account) setServerAccount(j.account);
-    return { ok: true, deposited: Number(j?.deposited) || 0 };
-  } catch {
-    return { ok: false, error: "Network error — nothing was credited" };
-  }
-}
+// ⚠️ `depositFunds()` used to live here: it POSTed to /api/trade/deposit and
+// credited the ledger directly. Both are gone. A deposit now means money that
+// actually arrived — a verified gateway callback or an operator credit — and
+// the only way a customer can add money is to pay for it on /wallet. The
+// endpoint answers 410 Gone so an old bundle cannot credit itself either.
 
 /**
  * The KYC deposit gate. The server computes eligibility inside the account

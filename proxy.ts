@@ -105,6 +105,7 @@ async function sessionOk(token: string | undefined): Promise<boolean> {
 const PROTECTED = [
   "/dashboard",
   "/portfolio",
+  "/wallet",
   "/positions",
   "/ledger",
   "/watchlist",
@@ -178,6 +179,8 @@ export const config = {
     "/dashboard/:path*",
     "/portfolio",
     "/portfolio/:path*",
+    "/wallet",
+    "/wallet/:path*",
     "/positions",
     "/positions/:path*",
     "/ledger",

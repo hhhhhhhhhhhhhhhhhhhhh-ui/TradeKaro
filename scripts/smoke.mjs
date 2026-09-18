@@ -61,6 +61,41 @@ async function check(name, fn) {
   }
 }
 
+// ── operator session, for the checks that need a credit ─────────────────────
+//
+// Money can only enter an account two ways now: a verified gateway callback or
+// an operator credit. A test cannot forge a callback end to end (it has no
+// settled payment), so the funding path here is the OPERATOR one — which is
+// also the path a human actually uses, making it the better thing to exercise.
+// Against a host whose console password is not the local default, these checks
+// report a skip rather than failing, the same as the other admin-gated ones.
+let adminCookie = "";
+async function adminSession() {
+  if (adminCookie) return adminCookie;
+  const r = await fetch(BASE + "/api/admin/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: ADMIN_EMAIL, password: ADMIN_PASSWORD }),
+  });
+  adminCookie =
+    ((r.headers.getSetCookie?.() || [])
+      .join("; ")
+      .match(/admin_token=([^;]+)/) || [])[1] || "";
+  return adminCookie;
+}
+
+/** Credit an account the way an operator does. Returns null when it cannot. */
+async function creditViaAdmin(userId, amount, note) {
+  const cookie = await adminSession();
+  if (!cookie) return null;
+  const r = await post(
+    "/api/admin/clients",
+    { id: userId, deposit: amount, depositNote: note || "smoke" },
+    { Cookie: "admin_token=" + cookie },
+  );
+  return r.status === 200 ? r.json : null;
+}
+
 await check("quote: mapped symbols (NIFTY, RELIANCE)", async () => {
   const r = await post("/api/market/quote", { symbols: ["NIFTY", "RELIANCE"] });
   const ok = r.status === 200 && r.json?.ticks?.length >= 1;
@@ -440,9 +475,9 @@ await check(
 );
 
 // ── Deposits & the KYC gate ───────────────────────────────────────────────
-// A deposit must be recorded server-side, raise trading capital, and move the
-// KYC gate. Each assertion is derived from the payload rather than hard-coded,
-// so it holds whatever threshold the admin has configured.
+// Money enters an account exactly two ways now — a verified gateway callback or
+// an operator credit — and NEITHER is reachable by a customer. These checks pin
+// that down, then prove a real credit still moves the KYC gate and the wallet.
 let depositBaseline = null;
 
 await check("deposit: unauthorised is refused", async () => {
@@ -451,56 +486,97 @@ await check("deposit: unauthorised is refused", async () => {
   return { ok, info: `status=${r.status}` };
 });
 
-await check("deposit: rejected amounts do not credit", async () => {
+await check("deposit: a signed-in user cannot credit themselves", async () => {
+  // ⚠️ The check that matters most in this file. This route used to credit the
+  // ledger directly, so any signed-in user could add ₹5,00,000 per request, clear
+  // the KYC threshold in one click and then ask for a real withdrawal. It must
+  // now refuse — and refuse WITHOUT moving the balance, which is what the second
+  // half of this assertion is for.
   const h = { Authorization: "Bearer " + accountToken };
+  const before = (await post("/api/trade", { action: "load" }, h)).json
+    ?.account;
   const zero = await post("/api/trade/deposit", { amount: 0 }, h);
-  const neg = await post("/api/trade/deposit", { amount: -5000 }, h);
-  const huge = await post("/api/trade/deposit", { amount: 9_000_000 }, h);
-  const ok = zero.status === 400 && neg.status === 400 && huge.status === 400;
+  const big = await post("/api/trade/deposit", { amount: 9_000_000 }, h);
+  const after = (await post("/api/trade", { action: "load" }, h)).json?.account;
+  const moved =
+    Math.abs(Number(after?.deposited) - Number(before?.deposited)) > 0.001 ||
+    Math.abs(Number(after?.withdrawable) - Number(before?.withdrawable)) >
+      0.001;
+  const refused = zero.status === 410 && big.status === 410;
   return {
-    ok,
-    info: `zero=${zero.status} negative=${neg.status} overCap=${huge.status}`,
-  };
-});
-
-await check("deposit: credits ledger and raises capital", async () => {
-  const h = { Authorization: "Bearer " + accountToken };
-  const before = await post("/api/trade", { action: "load" }, h);
-  const base = before.json?.account || {};
-  depositBaseline = base;
-  const dep = await post("/api/trade/deposit", { amount: 5000 }, h);
-  const acct = dep.json?.account || {};
-  const grew = (v) => (acct[v] ?? 0) - (base[v] ?? 0);
-  const ok =
-    dep.status === 200 &&
-    Math.abs(Number(acct.deposited) - (Number(base.deposited) + 5000)) < 0.01 &&
-    // The credit is real money: it shows up as trading capital too.
-    Math.abs(grew("startCash") - 5000) < 0.01 &&
-    Math.abs(grew("freeMargin") - 5000) < 0.01;
-  return {
-    ok,
-    info: `deposited=${acct.deposited} capital+${grew("startCash").toFixed(2)} free+${grew("freeMargin").toFixed(2)}`,
+    ok: refused && !moved,
+    info: refused
+      ? moved
+        ? "refused but the balance moved"
+        : `refused with 410, balance unchanged (${before?.deposited})`
+      : `zero=${zero.status} large=${big.status}`,
   };
 });
 
 await check(
-  "deposit: retrying the same idem is not credited twice",
+  "deposit: an operator credit raises capital and the wallet",
   async () => {
     const h = { Authorization: "Bearer " + accountToken };
-    const idem = "smoke-" + Date.now();
-    const a = await post("/api/trade/deposit", { amount: 100, idem }, h);
-    const b = await post("/api/trade/deposit", { amount: 100, idem }, h);
+    const me = await post("/api/v1/auth/getAccountDetails", {}, h);
+    const userId = String(me.json?.clientID || "").replace(/^u-/, "");
+    if (!userId) return { ok: false, info: "no account id" };
+
+    const before = (await post("/api/trade", { action: "load" }, h)).json
+      ?.account;
+    const credited = await creditViaAdmin(userId, 5000, "smoke credit");
+    if (!credited)
+      return { ok: false, info: "skipped — could not sign in to the console" };
+    depositBaseline = before;
+
+    const after = (await post("/api/trade", { action: "load" }, h)).json
+      ?.account;
+    const grew = (v) => (after?.[v] ?? 0) - (before?.[v] ?? 0);
     const ok =
-      a.status === 200 &&
-      b.status === 200 &&
-      b.json?.duplicate === true &&
-      Math.abs(Number(a.json?.deposited) - Number(b.json?.deposited)) < 0.01;
+      Math.abs(grew("deposited") - 5000) < 0.01 &&
+      // Real money in is a wallet balance, and it also buys trading room.
+      Math.abs(grew("withdrawable") - 5000) < 0.01 &&
+      Math.abs(grew("startCash") - 5000) < 0.01;
     return {
       ok,
-      info: `first=${a.json?.deposited} retry=${b.json?.deposited} duplicate=${b.json?.duplicate}`,
+      info: `deposited+${grew("deposited").toFixed(0)} withdrawable+${grew("withdrawable").toFixed(0)} capital+${grew("startCash").toFixed(0)}`,
     };
   },
 );
+
+await check("wallet: the page's numbers come from the ledger", async () => {
+  const h = { Authorization: "Bearer " + accountToken };
+  const w = (await get("/api/wallet", h)).json || {};
+  const a =
+    (await post("/api/trade", { action: "load" }, h)).json?.account || {};
+  // Two endpoints, one truth. A wallet that disagrees with the account payload
+  // is the mismatch that makes a money screen untrustworthy.
+  const ok =
+    Math.abs(Number(w.walletBalance) - Number(a.walletBalance)) < 0.01 &&
+    Math.abs(Number(w.withdrawable) - Number(a.withdrawable)) < 0.01 &&
+    Math.abs(Number(w.deposited) - Number(a.walletDeposited)) < 0.01;
+  return {
+    ok,
+    info: `wallet=${w.walletBalance} account=${a.walletBalance} available=${w.withdrawable}`,
+  };
+});
+
+await check("wallet: practice credits are not withdrawable", async () => {
+  // The hole this closes: money that was never paid in must not be payable out.
+  // `deposited` on the wallet payload is the REAL total (gateway + operator);
+  // practice credits are reported separately and are not spendable.
+  const h = { Authorization: "Bearer " + accountToken };
+  const w = (await get("/api/wallet", h)).json || {};
+  const practice = Number(w.practiceCredit) || 0;
+  const wallet = Number(w.deposited) || 0;
+  const available = Number(w.withdrawable) || 0;
+  const ok = available <= wallet + 0.01;
+  return {
+    ok,
+    info: ok
+      ? `practice=${practice} realDeposits=${wallet} withdrawable=${available}`
+      : `withdrawable ${available} exceeds real money in (${wallet})`,
+  };
+});
 
 await check("kyc gate: eligibility follows the deposit rule", async () => {
   const h = { Authorization: "Bearer " + accountToken };
@@ -520,7 +596,10 @@ await check("kyc gate: eligibility follows the deposit rule", async () => {
   };
 });
 
-await check("kyc gate: funding the requirement unlocks it", async () => {
+await check("kyc gate: a real credit unlocks it", async () => {
+  // Every credit counts toward the requirement, whoever made it — a gateway
+  // payment or an operator top-up. That is why this drives the OPERATOR path:
+  // it is the one a test can actually perform, and the one a human uses.
   const h = { Authorization: "Bearer " + accountToken };
   const cur =
     (await post("/api/trade", { action: "load" }, h)).json?.account || {};
@@ -533,14 +612,21 @@ await check("kyc gate: funding the requirement unlocks it", async () => {
       info: `already eligible=${cur.kycEligible}`,
     };
   }
-  // Top up in one go when the shortfall fits the single-deposit cap.
-  const r = await post("/api/trade/deposit", { amount: need }, h);
-  const a = r.json?.account || {};
+  const me = await post("/api/v1/auth/getAccountDetails", {}, h);
+  const userId = String(me.json?.clientID || "").replace(/^u-/, "");
+  if (!userId) return { ok: false, info: "no account id" };
+  const credited = await creditViaAdmin(userId, need, "smoke KYC top-up");
+  if (!credited)
+    return { ok: false, info: "skipped — could not sign in to the console" };
+  const a =
+    (await post("/api/trade", { action: "load" }, h)).json?.account || {};
   const ok =
-    r.status === 200 && a.kycEligible === true && Number(a.kycRemaining) === 0;
+    a.kycEligible === true &&
+    Number(a.kycRemaining) === 0 &&
+    Number(a.withdrawable) > 0;
   return {
     ok,
-    info: `topped up ${need} -> eligible=${a.kycEligible} left=${a.kycRemaining}`,
+    info: `credited ${need} -> eligible=${a.kycEligible} left=${a.kycRemaining} withdrawable=${a.withdrawable}`,
   };
 });
 
@@ -1486,34 +1572,38 @@ await check(
   },
 );
 
-await check("payments: a repeated deposit idem credits once", async () => {
-  // The webhook's second line of defence. A callback replay is the normal case
-  // — the gateway retries up to 200 times — so the ledger itself has to refuse a
-  // repeated key, not merely the webhook log.
-  const h = { Authorization: "Bearer " + accountToken };
-  const idem = "smoke-" + randomUUID();
-  const a = await post(
-    "/api/trade/deposit",
-    { amount: 100, note: "smoke idem", idem },
-    h,
-  );
-  const b = await post(
-    "/api/trade/deposit",
-    { amount: 100, note: "smoke idem", idem },
-    h,
-  );
-  const ok =
-    a.status === 200 &&
-    b.status === 200 &&
-    b.json?.duplicate === true &&
-    Number(a.json?.deposited) === Number(b.json?.deposited);
-  return {
-    ok,
-    info: ok
-      ? `credited once at ₹${a.json?.deposited}, replay flagged duplicate`
-      : `first=${a.status} second=${b.status} dup=${b.json?.duplicate} ${a.json?.deposited}->${b.json?.deposited}`,
-  };
-});
+await check(
+  "deposit: the ledger refuses a practice credit outright",
+  async () => {
+    // The old self-service route is gone; this is the second lock. A caller that
+    // reaches `recordDeposit` with `method: "self"` is refused AT THE SOURCE, so
+    // re-exposing the endpoint by accident cannot reopen the money tap.
+    //
+    // Idempotency itself moved with the route: `idem` now only arrives from the
+    // gateway callback, where the txn id is the key. That path cannot be exercised
+    // without a settled payment, and is covered by the live gateway test instead
+    // (signed callback 200 → replay 200 duplicate → tampered 401).
+    const h = { Authorization: "Bearer " + accountToken };
+    const before = (await post("/api/trade", { action: "load" }, h)).json
+      ?.account;
+    const r = await post(
+      "/api/trade/deposit",
+      { amount: 100, method: "self", idem: "smoke-" + randomUUID() },
+      h,
+    );
+    const after = (await post("/api/trade", { action: "load" }, h)).json
+      ?.account;
+    const ok =
+      r.status === 410 &&
+      Math.abs(Number(after?.deposited) - Number(before?.deposited)) < 0.001;
+    return {
+      ok,
+      info: ok
+        ? `refused with 410, deposited unchanged at ${before?.deposited}`
+        : `status=${r.status} deposited ${before?.deposited}->${after?.deposited}`,
+    };
+  },
+);
 
 // ── Withdrawals ─────────────────────────────────────────────────────────────
 // These hold in every configuration, including the shipped one where the

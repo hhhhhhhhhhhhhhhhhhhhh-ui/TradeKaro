@@ -193,10 +193,11 @@ export default function NavbarDesktop(props: any) {
               />
               {st.label}
             </span>
-            {/* Funds pill */}
+            {/* Funds pill → the wallet. The balance is only useful if it is a
+                way in to adding or withdrawing money, not just a number. */}
             {logStatus && funds !== null && (
               <NavTransition
-                href="/portfolio"
+                href="/wallet"
                 className="hidden h-[34px] items-center rounded-md border border-border px-3 font-mono text-[11px] tabular-nums text-foreground/80 transition hover:border-foreground lg:inline-flex"
               >
                 ₹{funds.toLocaleString("en-IN", { maximumFractionDigits: 0 })}
@@ -295,7 +296,7 @@ export default function NavbarDesktop(props: any) {
                       { label: "Profile", href: "/profile" },
                       { label: "Portfolio", href: "/portfolio" },
                       { label: "Orders", href: "/portfolio/orders" },
-                      { label: "Funds", href: "/portfolio" },
+                      { label: "Wallet", href: "/wallet" },
                       { label: "Ledger", href: "/ledger" },
                       { label: "Settings", href: "/settings" },
                       { label: "Watchlist", href: "/watchlist" },

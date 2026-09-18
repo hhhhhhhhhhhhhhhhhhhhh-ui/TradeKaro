@@ -3,7 +3,11 @@ import { ledgerKeyFor } from "./authStore";
 import { runtimeSettings } from "./adminRuntime";
 import { marginPctForEmail } from "./clientRegistry";
 import { withdrawnTotal } from "./withdrawals";
-import { depositedTotal } from "./deposits";
+import {
+  depositedTotal,
+  practiceCreditTotal,
+  verifiedDepositedTotal,
+} from "./deposits";
 import { kycGate, normalizeMinDeposit } from "./kycGate";
 import { withdrawKycFor } from "./clientRegistry";
 import {
@@ -115,7 +119,13 @@ export type TradeAccount = {
    * excluded, because only those freed the money again.
    */
   withdrawn: number;
-  /** What may be requested right now: free cash, floored at zero. */
+  /** Real money in: gateway callbacks and operator credits only. */
+  walletDeposited: number;
+  /** Past practice credits — spendable on the paper book, never withdrawable. */
+  practiceCredit: number;
+  /** Real money in, minus everything asked for or paid out. */
+  walletBalance: number;
+  /** What may be requested right now: the wallet, floored at zero. */
   withdrawable: number;
 };
 
@@ -382,6 +392,11 @@ function applyToPositions(list: DerivedPos[], f: FillRow, meta: any) {
 export function deriveAccount(key: string, marginPct = 100): TradeAccount {
   const rows = fillsFor(key);
   const deposited = depositedTotal(key);
+  // Money that actually arrived, versus practice credits. Both are trading
+  // capital (the paper book must keep working exactly as it did), but only the
+  // first is a wallet balance — see `withdrawable` below.
+  const walletDeposited = verifiedDepositedTotal(key);
+  const practiceCredit = practiceCreditTotal(key);
   const startCash = tradingCapital(key);
   const positions: DerivedPos[] = [];
   let netSpent = 0;
@@ -453,6 +468,20 @@ export function deriveAccount(key: string, marginPct = 100): TradeAccount {
   const withdrawn = withdrawnTotal(key);
   const free = startCash + realizedPnl - charges - marginUsed - withdrawn;
 
+  // ── the wallet ──
+  //
+  // Withdrawable is NOT the paper equity. Every fill in this app is simulated:
+  // the market data is real but there is no broker and no counterparty, so
+  // trading P&L is scorekeeping. If `withdrawable` were derived from it, a
+  // customer could deposit ₹500, win ₹5,000 on the paper book and withdraw
+  // ₹5,500 of real money the platform never earned.
+  //
+  // So the wallet is exactly what it sounds like: money that arrived, minus
+  // money already asked for or paid out. A request holds its funds the moment
+  // it is made (`withdrawnTotal` counts unreleased rows), which is what stops
+  // the same balance being requested twice.
+  const walletBalance = Math.max(0, walletDeposited - withdrawn);
+
   return {
     startCash,
     cash: free,
@@ -473,8 +502,14 @@ export function deriveAccount(key: string, marginPct = 100): TradeAccount {
     freeMargin: free,
     deposited,
     withdrawn,
+    /** Real money in: gateway callbacks and operator credits only. */
+    walletDeposited,
+    /** Past practice credits — spendable on the paper book, never withdrawable. */
+    practiceCredit,
+    /** The wallet: real money in, minus everything asked for or paid out. */
+    walletBalance,
     /** What may be asked for right now. Never negative. */
-    withdrawable: Math.max(0, free),
+    withdrawable: Math.max(0, walletBalance),
   };
 }
 
@@ -1297,7 +1332,10 @@ export async function publicAccount(key: string, email?: string | null) {
   const a = deriveAccount(key, pct);
   // The KYC gate is computed server-side for the same reason the ledger is: a
   // browser that could decide it is eligible is not a gate at all.
-  const gate = kycGate(a.deposited, await kycRequirement());
+  // The KYC requirement is measured against money that ACTUALLY ARRIVED, never
+  // against practice credits — otherwise a user could clear the gate by
+  // clicking a free ADD button, and clearing it is what unlocks withdrawals.
+  const gate = kycGate(a.walletDeposited, await kycRequirement());
   // Whether KYC is *required to withdraw* is a separate question from whether
   // the deposit gate is cleared: the platform can waive it, and one account can
   // be exempted from (or held to) the rule regardless of the platform.
@@ -1324,6 +1362,13 @@ export async function publicAccount(key: string, email?: string | null) {
     deposited: r2(a.deposited),
     withdrawn: r2(a.withdrawn),
     withdrawable: r2(a.withdrawable),
+    /** Real money in, from the gateway or an operator. */
+    walletDeposited: r2(a.walletDeposited),
+    walletBalance: r2(a.walletBalance),
+    /** Practice credits: usable for trading, not payable out. */
+    practiceCredit: r2(a.practiceCredit),
+    /** Everything the paper book can trade with (practice + real − held). */
+    tradingCapital: r2(a.startCash),
     kycMinDeposit: gate.required,
     kycEligible: gate.eligible,
     kycRemaining: r2(gate.remaining),

@@ -3,7 +3,7 @@ import { currentUser } from "@/app/lib/authStore";
 import { findDirectoryUser, standingForUser } from "@/app/lib/directory";
 import { connectTokenFor } from "@/app/lib/connectToken";
 import { accountKey, kycRequirement } from "@/app/lib/tradingServer";
-import { depositedTotal } from "@/app/lib/deposits";
+import { verifiedDepositedTotal } from "@/app/lib/deposits";
 import { kycGate } from "@/app/lib/kycGate";
 
 export const runtime = "nodejs";
@@ -26,7 +26,9 @@ async function context(req: NextRequest) {
   const dir = await findDirectoryUser(user.id).catch(() => null);
   const { kyc, status } = await standingForUser(user.id);
   const key = accountKey(user.id);
-  const gate = kycGate(depositedTotal(key), await kycRequirement());
+  // Real deposits only — a practice credit must not unlock the connect token,
+  // for the same reason it must not unlock a withdrawal.
+  const gate = kycGate(verifiedDepositedTotal(key), await kycRequirement());
   return {
     userId: String(user.id),
     clientID: dir?.clientID || String(user.id),
