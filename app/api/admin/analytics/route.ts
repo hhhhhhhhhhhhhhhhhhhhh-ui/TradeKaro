@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/app/lib/db";
 import { runtimeSettings } from "@/app/lib/adminRuntime";
 import { depositedTotals } from "@/app/lib/deposits";
+import { legKey } from "@/app/lib/positionKeys";
 import { adminFrom, deny } from "../_guard";
 
 export const runtime = "nodejs";
@@ -56,6 +57,7 @@ type Fill = {
   user_id: string;
   ts: number;
   symbol: string;
+  product: string | null;
   side: string;
   qty: number;
   price: number;
@@ -63,6 +65,22 @@ type Fill = {
   charges: number;
   ref_price: number | null;
 };
+
+/**
+ * Positions are keyed by `symbol` + product, never by symbol alone.
+ *
+ * ⚠️ This walk used to key them by `f.symbol`, which silently MERGED a CNC leg
+ * and an MIS leg of the same scrip into one row. That mis-states realised P&L,
+ * exposure and free margin for exactly the customers who hold both — and it made
+ * this panel disagree with `deriveAccount`, which every portfolio page uses.
+ * `platformMoney()` on the dashboard walks the same ledger with the same rule,
+ * so the two must stay on `legKey` or they start contradicting each other.
+ */
+const legOf = (f: { symbol: string; product: string | null }) =>
+  legKey(f.symbol, f.product);
+
+/** The scrip half of a leg key, for the per-symbol aggregate. */
+const scripOf = (key: string) => key.split("\u0000")[0];
 
 type ClientRisk = {
   id: string;
@@ -147,7 +165,8 @@ function deriveRisk(
     const delta = f.side === "BUY" ? qty : -qty;
 
     // ── average-cost position ──
-    const p = s.pos.get(f.symbol) ?? { qty: 0, avg: 0 };
+    const leg = legOf(f);
+    const p = s.pos.get(leg) ?? { qty: 0, avg: 0 };
     const before = Math.abs(p.qty) * p.avg;
     if (p.qty === 0) {
       p.qty = delta;
@@ -167,16 +186,15 @@ function deriveRisk(
     s.exposure += after - before;
 
     // ── realised P&L: net cash per scrip, banked when the scrip goes flat ──
-    const net =
-      (s.byScrip.get(f.symbol) || 0) + (f.side === "SELL" ? val : -val);
+    const net = (s.byScrip.get(leg) || 0) + (f.side === "SELL" ? val : -val);
     if (p.qty === 0) {
       s.realized += net;
       if (f.ts >= todayStart) s.realizedToday += net;
-      s.byScrip.delete(f.symbol);
-      s.pos.delete(f.symbol);
+      s.byScrip.delete(leg);
+      s.pos.delete(leg);
     } else {
-      s.byScrip.set(f.symbol, net);
-      s.pos.set(f.symbol, p);
+      s.byScrip.set(leg, net);
+      s.pos.set(leg, p);
     }
 
     s.charges += Number(f.charges) || 0;
@@ -201,7 +219,8 @@ function deriveRisk(
 
   for (const [id, s] of perUser) {
     let mtm = 0;
-    for (const [scrip, p] of s.pos) {
+    for (const [leg, p] of s.pos) {
+      const scrip = scripOf(leg);
       const px = mark.get(scrip) ?? p.avg;
       mtm += (px - p.avg) * p.qty;
 
@@ -469,9 +488,14 @@ export async function GET(req: NextRequest) {
   // Capped so a pathological ledger cannot hang the admin console. When the cap
   // trips, per-client figures are incomplete, so say so rather than pretending.
   const CAP = 250_000;
+  // ⚠️ `id` is part of the ordering, not decoration. Realised P&L is banked the
+  // moment a leg goes FLAT, so the sequence matters: two fills stamped in the
+  // same millisecond applied in the other order can bank a different number.
+  // `deriveAccount` reads the ledger with exactly this ordering (see `fillsFor`),
+  // and this panel has to agree with the page every customer is looking at.
   const allFills = rows<Fill>(
-    `SELECT user_id, ts, symbol, side, qty, price, value, charges, ref_price
-     FROM trade_fills ORDER BY user_id, ts LIMIT ?`,
+    `SELECT user_id, ts, symbol, product, side, qty, price, value, charges, ref_price
+     FROM trade_fills ORDER BY user_id, ts, id LIMIT ?`,
     CAP,
   );
   const truncated = allFills.length >= CAP;

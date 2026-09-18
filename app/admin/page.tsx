@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   FiActivity,
   FiAlertTriangle,
+  FiArrowUpRight,
   FiBarChart2,
   FiBell,
   FiCreditCard,
@@ -15,6 +16,7 @@ import {
   FiList,
   FiMonitor,
   FiShield,
+  FiTrendingDown,
   FiTrendingUp,
   FiUsers,
 } from "react-icons/fi";
@@ -322,7 +324,10 @@ export default function AdminPage() {
   // that only tells you something is wrong after you click into the right page
   // is a console you have to remember to check; this is the one number that
   // decides whether an operator is needed at all.
-  const [waiting, setWaiting] = useState<{ payouts: number; callbacks: number }>({
+  const [waiting, setWaiting] = useState<{
+    payouts: number;
+    callbacks: number;
+  }>({
     payouts: 0,
     callbacks: 0,
   });
@@ -356,7 +361,8 @@ export default function AdminPage() {
         setWaiting({
           payouts: Array.isArray(pay?.queue) ? pay.queue.length : 0,
           callbacks: Array.isArray(pay?.webhooks)
-            ? pay.webhooks.filter((w: any) => bad.has(String(w?.outcome))).length
+            ? pay.webhooks.filter((w: any) => bad.has(String(w?.outcome)))
+                .length
             : 0,
         });
       } catch {
@@ -978,6 +984,108 @@ export default function AdminPage() {
                   sub="Active entries"
                 />
               </div>
+
+              {/* ── Platform money ──
+                  The four numbers that decide whether the place is solvent and
+                  whether anyone has to do something: what came in, what went
+                  out, what is being held for customers, and how the book has
+                  gone. All server-computed from the same ledgers the writes use.
+
+                  ⚠️ `money` is absent until /api/admin/stats returns, and every
+                  figure below is guarded for that — a dashboard that renders
+                  "₹NaN" is worse than one that renders "—". */}
+              <Card
+                title="Platform money"
+                sub="Money in, money out, what we are holding for customers, and how the book has gone."
+                action={
+                  stats?.money ? (
+                    <Badge
+                      tone={
+                        (stats.money.liability || 0) > 0 ? "green" : "slate"
+                      }
+                    >
+                      {stats.money.fundedAccounts || 0} funded ·{" "}
+                      {stats.money.traders || 0} traded
+                    </Badge>
+                  ) : null
+                }
+              >
+                <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+                  <Kpi
+                    label="TOTAL DEPOSITS"
+                    value={money(Number(stats?.money?.deposits) || 0)}
+                    tone="up"
+                    icon={<FiCreditCard size={14} aria-hidden />}
+                    sub={
+                      Number(stats?.money?.practiceCredit) > 0
+                        ? `+ ${money(Number(stats.money.practiceCredit))} practice credit (not withdrawable)`
+                        : "Verified payments and operator credits"
+                    }
+                  />
+                  <Kpi
+                    label="TOTAL WITHDRAWN"
+                    value={money(Number(stats?.money?.withdrawn) || 0)}
+                    tone="down"
+                    icon={<FiArrowUpRight size={14} aria-hidden />}
+                    sub={
+                      Number(stats?.money?.pending) > 0
+                        ? `${money(Number(stats.money.pending))} waiting approval${
+                            Number(stats?.money?.inFlight) > 0
+                              ? ` · ${money(Number(stats.money.inFlight))} in flight`
+                              : ""
+                          }`
+                        : Number(stats?.money?.inFlight) > 0
+                          ? `${money(Number(stats.money.inFlight))} in flight`
+                          : "Paid out to customers"
+                    }
+                  />
+                  <Kpi
+                    // Users' realised P&L, shown from the platform's side: their
+                    // losses are our gain, which is the number an operator is
+                    // really asking for. A leg that is still open is excluded,
+                    // because unrealised is not a result.
+                    label="TOTAL LOSS BY USERS"
+                    value={money(
+                      Math.max(0, -(Number(stats?.money?.usersPnl) || 0)),
+                    )}
+                    tone={
+                      (Number(stats?.money?.usersPnl) || 0) < 0 ? "up" : "muted"
+                    }
+                    icon={<FiTrendingDown size={14} aria-hidden />}
+                    sub={
+                      !stats?.money
+                        ? "—"
+                        : (Number(stats.money.usersPnl) || 0) < 0
+                          ? `Users down ${money(Math.abs(Number(stats.money.usersPnl)))} · won ${money(Number(stats.money.usersWinning))}`
+                          : `Users are net UP ${money(Number(stats.money.usersPnl))} — the platform is down`
+                    }
+                  />
+                  <Kpi
+                    label="BALANCE WITH USERS"
+                    value={money(Number(stats?.money?.liability) || 0)}
+                    icon={<FiUsers size={14} aria-hidden />}
+                    sub={
+                      (Number(stats?.money?.liability) || 0) >
+                      Number(stats?.money?.deposits) -
+                        Number(stats?.money?.withdrawn) +
+                        0.01
+                        ? "⚠ exceeds money in minus money out"
+                        : "Held in customer wallets — our liability"
+                    }
+                  />
+                </div>
+                <Callout tone="info">
+                  <strong>Deposits</strong> counts only money that actually
+                  arrived — a verified gateway payment or a credit from you.
+                  Practice credits are excluded, because they were never paid in
+                  and cannot be withdrawn. <strong>Withdrawn</strong> counts
+                  money the gateway confirmed sent; approved and in-flight
+                  requests are shown beneath it.{" "}
+                  <strong>Balance with users</strong> is every wallet balance
+                  added up: it is what the platform owes, so it should never
+                  exceed what is actually sitting in the gateway account.
+                </Callout>
+              </Card>
               <Card
                 title="Emergency controls"
                 sub="Platform-wide kill-switches. Each one asks for confirmation and is written to the audit trail."
