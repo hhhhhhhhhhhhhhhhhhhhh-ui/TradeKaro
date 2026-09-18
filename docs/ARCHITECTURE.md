@@ -334,6 +334,7 @@ Operator actions all live on `/admin` → **Finance** → Pay-outs (the queue, w
 Approve & pay / Reject + reason, and a manual payout that must name an account
 the customer owns — there is no free-text beneficiary anywhere in the console).
 `minWithdraw` / `maxWithdraw` are admin settings, defaults ₹500 / ₹2,00,000.
+
 ### The wallet: money in has to be money in
 
 `/wallet` is the only place money moves. It was a tab inside `/portfolio`, which
@@ -347,10 +348,10 @@ the mismatch that makes people distrust a money screen.
 
 **Two writers, neither reachable by a customer:**
 
-| Writer | Method | Where |
-| --- | --- | --- |
+| Writer                      | Method    | Where                              |
+| --------------------------- | --------- | ---------------------------------- |
 | A verified gateway callback | `gateway` | `POST /api/payments/webhook/payin` |
-| An operator credit | `admin` | `POST /api/admin/clients` |
+| An operator credit          | `admin`   | `POST /api/admin/clients`          |
 
 ⚠️ **`POST /api/trade/deposit` used to be a third writer, and a user-facing one.**
 Any signed-in user could credit their own ledger — up to ₹5,00,000 per request,
@@ -381,6 +382,7 @@ unreleased row), which is what stops the same balance being requested twice.
 `publicAccount` exposes `walletDeposited`, `walletBalance`, `practiceCredit` and
 `withdrawable`; `/api/wallet` re-exposes the same numbers rather than recomputing
 them, and a smoke check asserts the two endpoints agree.
+
 ### Is KYC required to withdraw? Two levels, because the honest answer differs
 
 `app/lib/withdrawKyc.ts` is the whole rule and imports nothing, so the panel and
