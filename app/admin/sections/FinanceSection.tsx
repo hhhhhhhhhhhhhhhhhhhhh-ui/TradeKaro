@@ -346,6 +346,12 @@ export default function FinanceSection({
             />
           </div>
 
+          {/* This used to warn, when the rail was live, that the footer and
+              /terms said the opposite — "no real funds are held or moved". They
+              no longer do; both now describe real funds with simulated
+              execution. Leaving the warning up would have been a false alarm,
+              and a false alarm is worse than none: an operator who sees an
+              alarm that is not real stops reading the ones that are. */}
           {!st.enabled ? (
             <Callout tone="info">
               The rail is <strong>off</strong>. No gateway call is made, the
@@ -354,11 +360,13 @@ export default function FinanceSection({
               for customers until you switch it on in <strong>Settings</strong>.
             </Callout>
           ) : (
-            <Callout tone="warn">
+            <Callout tone="info">
               The rail is <strong>live</strong> and this platform is taking real
-              money. The footer and <code>/terms</code> currently say the
-              opposite — “no real funds are held or moved” — so those have to
-              change, along with the regulatory question behind them.
+              money. The footer and <code>/terms</code> describe that accurately
+              — real funds in and out, simulated execution — so if the product
+              changes, change them in the same commit. Accepting real money is
+              regulated activity, and the licence position is a decision for the
+              business rather than something this page can check.
             </Callout>
           )}
 
