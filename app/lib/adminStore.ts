@@ -121,6 +121,15 @@ export type AdminSettings = {
     payinApiSecret: string;
     payoutApiKey: string;
     payoutApiSecret: string;
+    /**
+     * The secret the PROVIDER signs callbacks with — a third secret, separate
+     * from both API secrets.
+     *
+     * ⚠️ Verify callbacks with THIS. Using the pay-in API secret instead rejects
+     * every callback with a bad signature, which presents as "callbacks never
+     * arrive" rather than as anything that points at the secret.
+     */
+    webhookSecret: string;
     /** Overridable so the same build can be pointed at a sandbox. */
     baseUrl: string;
     minAmount: number;
@@ -214,6 +223,7 @@ export const DEFAULT_SETTINGS: AdminSettings = {
     payinApiSecret: "",
     payoutApiKey: "",
     payoutApiSecret: "",
+    webhookSecret: "",
     baseUrl: "https://ttpay.business/api/public/v1",
     minAmount: 100,
     maxAmount: 100000,

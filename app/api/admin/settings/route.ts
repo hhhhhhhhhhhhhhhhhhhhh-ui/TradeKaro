@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
       payinApiSecret: mask(settings.payments?.payinApiSecret),
       payoutApiKey: mask(settings.payments?.payoutApiKey),
       payoutApiSecret: mask(settings.payments?.payoutApiSecret),
+      webhookSecret: mask(settings.payments?.webhookSecret),
     },
   };
   return NextResponse.json({
@@ -148,6 +149,8 @@ export async function POST(req: NextRequest) {
       payinApiSecret: keepSecret(inc.payinApiSecret, cur2.payinApiSecret),
       payoutApiKey: keepSecret(inc.payoutApiKey, cur2.payoutApiKey),
       payoutApiSecret: keepSecret(inc.payoutApiSecret, cur2.payoutApiSecret),
+      // A third secret, and the one that actually verifies a callback.
+      webhookSecret: keepSecret(inc.webhookSecret, cur2.webhookSecret),
     };
     // A max below the min would make every top-up impossible, and the failure
     // would present as "minimum exceeded" on an amount that looks fine.

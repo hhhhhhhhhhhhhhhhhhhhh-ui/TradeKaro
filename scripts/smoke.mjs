@@ -1468,11 +1468,14 @@ await check(
     const p = r.json?.settings?.payments || {};
     // The masked form is `••••last4`; anything else means a real key reached the
     // browser, where it would sit in the DOM and in every proxy log.
+    // `webhookSecret` is included because it is a THIRD secret, and the one that
+    // actually verifies an incoming callback — easy to forget when listing keys.
     const leak = [
       "payinApiKey",
       "payinApiSecret",
       "payoutApiKey",
       "payoutApiSecret",
+      "webhookSecret",
     ].filter((k) => p[k] && !String(p[k]).startsWith("••••"));
     return {
       ok: !leak.length,

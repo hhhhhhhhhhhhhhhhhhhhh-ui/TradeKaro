@@ -21,6 +21,7 @@ import {
   railConfigured,
   sunpayConfig,
   verifySignature,
+  webhookSecretFor,
   type PayinCreated,
   type SunpayConfig,
 } from "./sunpay";
@@ -313,7 +314,12 @@ export async function applyPayinWebhook(
   if (!railConfigured(cfg, "payin"))
     return { status: 503, outcome: "not_configured" };
 
-  if (!verifySignature(rawBody, signature, cfg.payinApiSecret)) {
+  // ⚠️ The callback is signed with the provider's WEBHOOK secret, not the
+  // pay-in API secret. `webhookSecretFor` falls back to the API secret when the
+  // webhook secret is unset, so an account issued one value for both still
+  // works — but getting this wrong rejects every callback with a bad signature,
+  // which looks exactly like "callbacks are not arriving".
+  if (!verifySignature(rawBody, signature, webhookSecretFor(cfg, "payin"))) {
     // Logged with a null txn id: an unverified payload is not something to
     // trust enough to dedupe on. The unique index ignores nulls, so repeated
     // forgeries cannot lock out a real delivery.
@@ -796,7 +802,7 @@ export async function applyPayoutWebhook(
   if (!railConfigured(cfg, "payout"))
     return { status: 503, outcome: "not_configured" };
 
-  if (!verifySignature(rawBody, signature, cfg.payoutApiSecret)) {
+  if (!verifySignature(rawBody, signature, webhookSecretFor(cfg, "payout"))) {
     logWebhook({
       event: "payout.updated",
       txnId: null,

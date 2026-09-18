@@ -35,11 +35,35 @@ export type SunpayConfig = {
   payinApiSecret: string;
   payoutApiKey: string;
   payoutApiSecret: string;
+  /**
+   * The secret the PROVIDER signs callbacks with.
+   *
+   * ⚠️ This is NOT the API secret. The merchant dashboard shows "Webhook
+   * secret — we sign callback POSTs to your notify URL with this secret", and
+   * the two are different values. Verifying with the API secret instead makes
+   * every callback fail with a bad signature, which presents as "deposits are
+   * never credited automatically" and points nowhere near the cause.
+   *
+   * Empty falls back to the API secret, because some accounts are issued the
+   * same value for both and a blank field must not break a working setup.
+   */
+  webhookSecret: string;
   enabled: boolean;
   payoutsEnabled: boolean;
   minAmount: number;
   maxAmount: number;
 };
+
+/**
+ * The secret to verify a callback against.
+ *
+ * The webhook secret wins when it is set; otherwise the rail's own API secret,
+ * which is what a single-secret account signs with.
+ */
+export function webhookSecretFor(cfg: SunpayConfig, rail: Rail): string {
+  if (cfg.webhookSecret) return cfg.webhookSecret;
+  return rail === "payin" ? cfg.payinApiSecret : cfg.payoutApiSecret;
+}
 
 export type GatewayResult<T> =
   | { ok: true; data: T }
@@ -81,6 +105,7 @@ export function sunpayConfig(s: AdminSettings): SunpayConfig {
     payoutApiKey: env("SUNPAY_PAYOUT_API_KEY") || p?.payoutApiKey || "",
     payoutApiSecret:
       env("SUNPAY_PAYOUT_API_SECRET") || p?.payoutApiSecret || "",
+    webhookSecret: env("SUNPAY_WEBHOOK_SECRET") || p?.webhookSecret || "",
     enabled: p?.enabled === true,
     payoutsEnabled: p?.payoutsEnabled === true,
     minAmount: Number(p?.minAmount) > 0 ? Number(p.minAmount) : 100,

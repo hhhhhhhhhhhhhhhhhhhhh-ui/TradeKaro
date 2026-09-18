@@ -485,7 +485,7 @@ export default function FinanceSection({
 
           <Card
             title="Credentials"
-            sub="Separate key pairs per rail — mixing them fails as “nothing ever confirms”."
+            sub="Three secrets: one per rail, plus the webhook secret the provider signs callbacks with."
           >
             <div className="grid gap-3 sm:grid-cols-2">
               {field("payinApiKey", "Pay-in API key", true)}
@@ -493,6 +493,31 @@ export default function FinanceSection({
               {field("payoutApiKey", "Payout API key", true)}
               {field("payoutApiSecret", "Payout API secret", true)}
             </div>
+            <Field label="Webhook secret (signs callbacks — not the pay-in secret)">
+              <input
+                disabled={!canEdit || !superadmin}
+                value={String(draft.webhookSecret ?? pay.webhookSecret ?? "")}
+                onChange={(e) =>
+                  setDraft((v) => ({ ...v, webhookSecret: e.target.value }))
+                }
+                placeholder={
+                  pay.webhookSecret
+                    ? "•••• (leave blank to keep)"
+                    : "From Merchant info → Webhook secret"
+                }
+                className={inputCls}
+              />
+            </Field>
+            <Callout tone="info">
+              This is the <strong>third</strong> secret and the only one that
+              verifies an incoming callback. The merchant dashboard lists it
+              under <em>Merchant info → Webhook secret</em> (“we sign callback
+              POSTs to your notify URL with this secret”). Verifying with the
+              pay-in secret instead rejects <strong>every</strong> callback as a
+              bad signature, which looks exactly like callbacks never arriving.
+              Leave it blank only if the provider issued the same value for
+              both.
+            </Callout>
             <Field label="API base URL">
               <input
                 disabled={!canEdit || !superadmin}
