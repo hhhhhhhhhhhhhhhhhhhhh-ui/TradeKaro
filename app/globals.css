@@ -207,6 +207,34 @@
 .pressable:active {
   transform: scale(0.95);
 }
+
+/* Primary money action — the wallet's deposit and withdraw buttons.
+   A within-hue gradient plus an inset top highlight gives the button an edge to
+   catch the light, which is what separates a flat block of colour from
+   something that looks pressed out of metal. The coloured shadow is the brand
+   bleeding underneath it rather than a neutral grey.
+   Deliberately NOT a teal→lime gradient: white text on the lime end fails
+   contrast in the light theme. */
+.btn-money {
+  background-image: linear-gradient(
+    145deg,
+    rgb(var(--brand)) 0%,
+    rgb(var(--brand) / 0.84) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.22),
+    inset 0 -1px 0 0 rgb(0 0 0 / 0.12),
+    0 12px 28px -14px rgb(var(--brand) / 0.95);
+  transition:
+    filter 0.15s ease,
+    transform 0.12s ease;
+}
+.btn-money:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-money:disabled {
+  filter: saturate(0.45);
+}
 .row-slide {
   transition:
     transform 0.15s ease,
