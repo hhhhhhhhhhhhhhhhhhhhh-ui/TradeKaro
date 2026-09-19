@@ -440,7 +440,9 @@ export default function WalletPage() {
         <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              wd.deposit.enabled ? "bg-positive live-dot" : "bg-muted-foreground"
+              wd.deposit.enabled
+                ? "bg-positive live-dot"
+                : "bg-muted-foreground"
             }`}
           />
           <span className="font-mono text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
@@ -512,7 +514,9 @@ export default function WalletPage() {
                 <span className="font-semibold text-white/85">
                   KYC ·{" "}
                   <span className="display-num">{money(wd.deposited)}</span> of{" "}
-                  <span className="display-num">{money(wd.kyc.minDeposit)}</span>
+                  <span className="display-num">
+                    {money(wd.kyc.minDeposit)}
+                  </span>
                 </span>
                 <span className="display-num text-white/60">
                   {money(wd.kyc.remaining)} to go
@@ -525,9 +529,9 @@ export default function WalletPage() {
                 />
               </div>
               <p className="mt-2 text-[11px] leading-relaxed text-white/60">
-                Withdrawals unlock once you have added {money(wd.kyc.minDeposit)}
-                . Every deposit counts — online payments and credits from our
-                team alike.
+                Withdrawals unlock once you have added{" "}
+                {money(wd.kyc.minDeposit)}. Every deposit counts — online
+                payments and credits from our team alike.
               </p>
             </div>
           ) : null}
@@ -682,7 +686,11 @@ export default function WalletPage() {
                   className={`${inputCls} pl-9 font-bold`}
                 />
               </div>
-              <button disabled={wdBusy} onClick={withdraw} className={btnPrimary}>
+              <button
+                disabled={wdBusy}
+                onClick={withdraw}
+                className={btnPrimary}
+              >
                 {wdBusy ? "REQUESTING…" : "WITHDRAW"}
               </button>
             </div>
@@ -877,7 +885,10 @@ export default function WalletPage() {
         ) : (
           <div className="flex flex-col divide-y divide-border">
             {activity.map((a) => (
-              <div key={a.key} className="row-slide flex items-center gap-3 py-3">
+              <div
+                key={a.key}
+                className="row-slide flex items-center gap-3 py-3"
+              >
                 <span
                   className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
                     a.direction === "in"

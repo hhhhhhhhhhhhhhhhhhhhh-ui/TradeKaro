@@ -8,47 +8,53 @@ import {
   FiClipboard,
   FiBriefcase,
   FiTrendingUp,
-  FiUser,
   FiActivity,
   FiFilter,
   FiBarChart2,
-  FiLogIn,
   FiBox,
   FiCreditCard,
 } from "react-icons/fi";
 
-// Signed-in dock: the account surfaces a trader jumps between all day.
+// Signed-in dock: five thumbs in the thumb zone, and POSITIONS dead centre as
+// the raised hero key.
 //
-// Six, not five: WALLET is where money actually moves (deposit, withdraw, saved
-// destinations) and it was previously buried as a tab inside the portfolio —
-// which is not where anyone looks for their balance. Targets stay 60px tall.
+// The centre slot is not decoration — it is the one screen a trader opens
+// constantly (live P&L on what they are holding), and the middle is where the
+// thumb lands without looking. The four around it are the rest of the day loop:
+// find something to trade (LIST), see what you have done (ORDERS), see what you
+// can trade (OPTS), move the money (WALLET).
+//
+// PROFILE was removed from this dock. It was a sixth key that pushed everything
+// off-centre, and it is not a trading surface — it now lives on the header
+// avatar, where "who am I / settings" belongs. That also removes the last
+// destination offered in two places at once.
 const AUTH_TABS = [
   { href: "/watchlist", label: "LIST", Icon: FiStar },
   { href: "/portfolio/orders", label: "ORDERS", Icon: FiClipboard },
   { href: "/positions", label: "POSITION", Icon: FiBriefcase, hero: true },
   { href: "/wallet", label: "WALLET", Icon: FiCreditCard },
   { href: "/options", label: "OPTS", Icon: FiTrendingUp },
-  { href: "/profile", label: "PROFILE", Icon: FiUser },
 ];
 
-// Visitor dock. Four of the five signed-in tabs are account pages that would
-// only bounce off the proxy, so they are swapped for the public market pages
-// and the one action a visitor actually needs.
+// Visitor dock. Same five-key shape and the same centred hero, because a
+// visitor has no drawer at all — this dock IS their navigation, so the layout
+// has to carry itself. The centre is the market list they came for: discovery
+// on the left, the core market page in the middle, the asset classes on the
+// right.
 //
-// Six entries, not five: a visitor has no hamburger — it renders only when
-// signed in — so the dock is the ONLY navigation a logged-out phone user has,
-// and /commodities was unreachable from it. The signed-in list stays at five
-// because those are the account surfaces a trader jumps between.
+// LOGIN is deliberately gone from here. It was the sixth key and it duplicated
+// the LOGIN button already pinned in the header, so a visitor was offered the
+// same destination twice on one screen — the exact clutter this dock now
+// avoids. Login is still one tap away, in a place they can always see.
 //
 // The column class is a literal per list, never `grid-cols-${n}`: a dynamic
 // name would not survive Tailwind's build-time scan.
 const GUEST_TABS = [
-  { href: "/stocks", label: "STOCKS", Icon: FiTrendingUp },
   { href: "/screener", label: "SCREEN", Icon: FiFilter },
   { href: "/topmovers", label: "MOVERS", Icon: FiBarChart2 },
-  { href: "/commodities", label: "COMMOD", Icon: FiBox },
+  { href: "/stocks", label: "STOCKS", Icon: FiTrendingUp, hero: true },
   { href: "/options", label: "OPTS", Icon: FiActivity },
-  { href: "/login", label: "LOGIN", Icon: FiLogIn, hero: true },
+  { href: "/commodities", label: "COMMOD", Icon: FiBox },
 ];
 
 function isActiveTab(path: string, href: string) {
@@ -92,7 +98,7 @@ export default function MobileBottomNav() {
       <div className="px-3 pointer-events-auto">
         <div className="mx-auto max-w-[520px] border border-border bg-card/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
           <div className="h-[2px] w-full brand-gradient" />
-          <div className="grid grid-cols-6">
+          <div className={TABS.length === 5 ? "grid grid-cols-5" : "grid grid-cols-6"}>
             {TABS.map(({ href, label, Icon, hero }) => {
               const active = isActiveTab(path, href);
               if (hero) {

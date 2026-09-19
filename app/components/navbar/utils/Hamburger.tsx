@@ -21,71 +21,37 @@ export default function Hamburger() {
   let dropdownClass =
     "block px-4 py-2 text-[13px] hover:bg-muted transition-colors rounded-md mx-1";
 
-  let options = [
+  // Grouped, and deliberately WITHOUT the three destinations that sit in the
+  // bottom dock (Positions, Watchlist, Options). The drawer used to repeat
+  // thirteen flat links, three of which the thumb-bar already offered an inch
+  // below — the same destination twice on one screen, and two lists to keep in
+  // step forever. What is left is what the dock does not cover: browsing the
+  // market, and the account/how-am-I-configured end of the product.
+  //
+  // Positions stays one tap away in the dock centre, so nothing became
+  // unreachable by removing it here.
+  const groups = [
     {
-      title: "Positions",
-      id: 0,
-      href: "/positions",
+      title: "Markets",
+      items: [
+        { title: "Dashboard", href: "/dashboard" },
+        { title: "Stocks", href: "/stocks" },
+        { title: "Commodities", href: "/commodities" },
+        { title: "Screener", href: "/screener" },
+        { title: "Top movers", href: "/topmovers" },
+        { title: "News", href: "/news" },
+      ],
     },
     {
-      title: "Portfolio",
-      id: 1,
-      href: "/portfolio",
-    },
-    {
-      title: "Watchlist",
-      id: 2,
-      href: "/watchlist",
-    },
-    {
-      title: "Top movers",
-      id: 3,
-      href: "/topmovers",
-    },
-    {
-      title: "Screener",
-      id: 5,
-      href: "/screener",
-    },
-    {
-      title: "Options",
-      id: 6,
-      href: "/options",
-    },
-    {
-      title: "Commodities",
-      id: 11,
-      href: "/commodities",
-    },
-    {
-      title: "News",
-      id: 12,
-      href: "/news",
-    },
-    {
-      title: "Profile",
-      id: 7,
-      href: "/profile",
-    },
-    {
-      title: "Connect account",
-      id: 10,
-      href: "/connect",
-    },
-    {
-      title: "Ledger",
-      id: 8,
-      href: "/ledger",
-    },
-    {
-      title: "Settings",
-      id: 9,
-      href: "/settings",
-    },
-    {
-      title: "Log out",
-      id: 4,
-      href: "/logout",
+      title: "Account",
+      items: [
+        { title: "Profile", href: "/profile" },
+        { title: "Portfolio", href: "/portfolio" },
+        { title: "Ledger", href: "/ledger" },
+        { title: "Connect account", href: "/connect" },
+        { title: "Settings", href: "/settings" },
+        { title: "Log out", href: "/logout", danger: true },
+      ],
     },
   ];
 
@@ -121,7 +87,7 @@ export default function Hamburger() {
         </div>
         {isOpen && (
           <div
-            className="absolute right-0 z-10 mt-2 w-56 origin-top-right rounded-lg border border-border bg-popover py-1 shadow-lg focus:outline-none"
+            className="absolute right-0 z-10 mt-2 w-60 origin-top-right rounded-lg border border-border bg-popover py-1.5 shadow-lg focus:outline-none"
             style={{
               transform: isOpen
                 ? "translateY(0) scale(1)"
@@ -131,22 +97,31 @@ export default function Hamburger() {
             }}
           >
             <div
-              className="flex flex-col gap-y-0.5 transition-all duration-300 ease-in-out"
+              className="flex flex-col transition-all duration-300 ease-in-out"
               role="none"
             >
-              {options.map((option) => (
-                <NavTransition
-                  key={option.id}
-                  href={option.href}
-                  onClick={() => setIsOpen(false)}
-                  className={`${dropdownClass} ${
-                    option.title === "Log out"
-                      ? "text-negative"
-                      : "text-popover-foreground"
-                  }`}
-                >
-                  {option.title}
-                </NavTransition>
+              {groups.map((group, gi) => (
+                <div key={group.title} role="none">
+                  <div
+                    className={`px-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground ${
+                      gi === 0 ? "pt-1" : "pt-2 border-t border-border mt-1"
+                    }`}
+                  >
+                    {group.title}
+                  </div>
+                  {group.items.map((item) => (
+                    <NavTransition
+                      key={item.href}
+                      href={item.href}
+                      onClick={() => setIsOpen(false)}
+                      className={`${dropdownClass} ${
+                        item.danger ? "text-negative" : "text-popover-foreground"
+                      }`}
+                    >
+                      {item.title}
+                    </NavTransition>
+                  ))}
+                </div>
               ))}
             </div>
           </div>
