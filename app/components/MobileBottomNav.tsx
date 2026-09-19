@@ -95,72 +95,92 @@ export default function MobileBottomNav() {
       className="md:hidden fixed inset-x-0 bottom-0 z-40 pointer-events-none"
       style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}
     >
-      <div className="px-3 pointer-events-auto">
-        <div className="mx-auto max-w-[520px] border border-border bg-card/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
-          <div className="h-[2px] w-full brand-gradient" />
-          <div
-            className={
-              TABS.length === 5 ? "grid grid-cols-5" : "grid grid-cols-6"
-            }
-          >
-            {TABS.map(({ href, label, Icon, hero }) => {
-              const active = isActiveTab(path, href);
-              if (hero) {
-                return (
-                  <Link
-                    key={href}
-                    href={href}
-                    aria-current={active ? "page" : undefined}
-                    className="relative flex flex-col items-center justify-center gap-1 min-h-[60px] -mt-3 active:scale-95 transition-transform"
-                  >
-                    <span
-                      className={`flex h-11 w-11 items-center justify-center border transition-colors ${
-                        active
-                          ? "bg-positive text-positive-foreground border-positive shadow-[0_0_18px_rgba(38,166,154,0.55)]"
-                          : "bg-foreground text-background border-foreground"
-                      }`}
-                    >
-                      <Icon size={19} strokeWidth={2.2} />
-                    </span>
-                    <span
-                      className={`text-[10.5px] font-medium ${active ? "text-positive" : "text-foreground/60"}`}
-                    >
-                      {label}
-                    </span>
-                    {active && (
-                      <span className="absolute top-2 h-1 w-8 bg-positive" />
-                    )}
-                  </Link>
-                );
-              }
+      {/* Full-bleed on purpose. This dock used to float as a 520px card with a
+          gutter down each side, so on a phone it spent real width on empty
+          margin and read as a widget parked on the page rather than the edge of
+          the app. Edge to edge, all five targets share the whole width and the
+          thumb never has to aim inward. */}
+      <div className="pointer-events-auto w-full border-t border-border bg-card/95 pb-1.5 backdrop-blur-xl shadow-[0_-10px_34px_-14px_rgba(0,0,0,0.72)]">
+        <div className="h-[2px] w-full brand-gradient" />
+        <div
+          className={
+            TABS.length === 5 ? "grid grid-cols-5" : "grid grid-cols-6"
+          }
+        >
+          {TABS.map(({ href, label, Icon, hero }) => {
+            const active = isActiveTab(path, href);
+            if (hero) {
               return (
                 <Link
                   key={href}
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className={`relative flex flex-col items-center justify-center gap-1 min-h-[60px] active:scale-95 transition-colors ${
+                  className="relative flex min-h-[64px] flex-col items-center justify-end gap-1 pb-2 active:scale-95 transition-transform"
+                >
+                  {/* Raised with a TRANSFORM, not a margin. A negative margin
+                      would lift the label with it and knock it off the
+                      baseline the other four share; a translate moves the
+                      keycap only, so it pokes above the bar while every label
+                      still lines up. */}
+                  <span
+                    className={`flex h-12 w-12 -translate-y-3 items-center justify-center rounded-2xl transition-all ${
+                      active
+                        ? "bg-positive text-positive-foreground shadow-[0_12px_26px_-10px_rgba(38,166,154,0.9)]"
+                        : "bg-foreground text-background shadow-[0_12px_24px_-12px_rgba(0,0,0,0.9)]"
+                    }`}
+                  >
+                    <Icon size={21} strokeWidth={2.2} />
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold tracking-[0.05em] ${
+                      active ? "text-positive" : "text-foreground/60"
+                    }`}
+                  >
+                    {label}
+                  </span>
+                </Link>
+              );
+            }
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={active ? "page" : undefined}
+                className="group relative flex min-h-[64px] flex-col items-center justify-end gap-1 pb-2 active:scale-95 transition-transform"
+              >
+                {/* One indicator, not two: a filled pill behind the icon and the
+                    label taking the active colour. This replaces the old top
+                    hairline, which sat under the browser's own chrome and was
+                    easy to miss. */}
+                <span
+                  className={`relative flex h-8 w-[52px] items-center justify-center rounded-full transition-colors ${
+                    active ? "bg-positive/12" : "group-hover:bg-muted/70"
+                  }`}
+                >
+                  <Icon
+                    size={20}
+                    strokeWidth={active ? 2.4 : 1.8}
+                    className={active ? "text-positive" : "text-foreground/55"}
+                  />
+                  {href === "/portfolio/orders" && pendingCount > 0 && (
+                    <span className="absolute -top-1 right-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-negative px-1 font-mono text-[10px] font-bold text-negative-foreground">
+                      {pendingCount > 9 ? "9+" : pendingCount}
+                    </span>
+                  )}
+                  {href === "/watchlist" && active && (
+                    <span className="absolute -right-0.5 top-0 h-2 w-2 rounded-full bg-positive animate-pulse" />
+                  )}
+                </span>
+                <span
+                  className={`text-[10px] font-semibold tracking-[0.05em] ${
                     active ? "text-positive" : "text-foreground/60"
                   }`}
                 >
-                  {active && (
-                    <span className="absolute top-0 h-[2px] w-10 bg-positive shadow-[0_0_12px_rgba(38,166,154,0.9)]" />
-                  )}
-                  <span className="relative">
-                    <Icon size={20} strokeWidth={active ? 2.4 : 1.8} />
-                    {href === "/portfolio/orders" && pendingCount > 0 && (
-                      <span className="absolute -top-2 -right-3 min-w-[16px] h-4 px-1 flex items-center justify-center text-[10px] font-mono bg-negative text-negative-foreground">
-                        {pendingCount > 9 ? "9+" : pendingCount}
-                      </span>
-                    )}
-                    {href === "/watchlist" && active && (
-                      <span className="absolute -top-1 -right-1 h-2 w-2 bg-positive animate-pulse" />
-                    )}
-                  </span>
-                  <span className="text-[10.5px] font-medium">{label}</span>
-                </Link>
-              );
-            })}
-          </div>
+                  {label}
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </div>
     </nav>

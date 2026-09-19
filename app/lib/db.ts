@@ -339,13 +339,24 @@ function open(): DatabaseSync {
   mkdirSync(path.dirname(FILE), { recursive: true });
   const db = new DatabaseSync(FILE);
 
+  // ⚠️ FIRST, before anything else touches the file. Every statement below can
+  // find the database momentarily locked, because a Next build evaluates this
+  // module in several workers at once. With no busy_timeout set, SQLite returns
+  // SQLITE_BUSY immediately instead of waiting, and the error surfaces as
+  // "database is locked" from whichever line happened to be first.
+  //
+  // This has to precede the journal_mode work, not follow it: an earlier version
+  // of this function set the timeout second and read journal_mode first, so the
+  // read — a plain read, which in WAL mode can still need a lock to recover the
+  // shared index — was the statement that failed.
+  db.exec("PRAGMA busy_timeout = 5000");
+
   // ⚠️ `PRAGMA journal_mode = WAL` is unlike every other statement here: it
   // needs a brief EXCLUSIVE lock and does NOT honour busy_timeout. When several
   // processes open this file at the same moment — which is exactly what a Next
-  // build does, since it evaluates this module in every worker — one of them
-  // gets `database is locked` and the whole build fails with it. (That is the
-  // intermittent "Failed to collect configuration for /api/admin/clients"
-  // error: the stack points at this line.)
+  // build does — one of them gets `database is locked` and the whole build dies
+  // with it. (That was the intermittent "Failed to collect configuration for
+  // /api/admin/clients" error.)
   //
   // The mode is persistent once set, so there is nothing to do on an
   // established database. Only attempt the change when it is not already WAL,
@@ -361,8 +372,6 @@ function open(): DatabaseSync {
       /* another connection got there first — good enough */
     }
   }
-
-  db.exec("PRAGMA busy_timeout = 5000");
   // MUST run before SCHEMA: SCHEMA would otherwise create empty trade_* tables
   // beside the populated paper_* ones and the rename below would be skipped,
   // leaving every existing account looking brand new.
