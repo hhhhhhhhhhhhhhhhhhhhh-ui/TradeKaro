@@ -157,6 +157,34 @@ function HeroStat({ label, value }: { label: string; value: number }) {
   );
 }
 
+// ── device-only destinations, promoted once ────────────────────────────────
+//
+// Before payout destinations were stored server-side they lived in the browser.
+// The promotion used to happen on /profile/banks, which is now a redirect into
+// this page — so it has to happen HERE, or a customer who saved a bank account
+// on the old version would open their wallet and find it gone.
+const LEGACY_BANK_KEY = "fs_bank_accounts";
+const LEGACY_UPI_KEY = "fs_upi_ids";
+
+function legacyDeviceAccounts(): unknown[] {
+  try {
+    const banks = JSON.parse(localStorage.getItem(LEGACY_BANK_KEY) || "[]");
+    const upis = JSON.parse(localStorage.getItem(LEGACY_UPI_KEY) || "[]");
+    return [
+      ...(Array.isArray(banks) ? banks : []).map((b: any) => ({
+        ...b,
+        kind: "bank",
+      })),
+      ...(Array.isArray(upis) ? upis : []).map((u: any) => ({
+        ...u,
+        kind: "upi",
+      })),
+    ];
+  } catch {
+    return [];
+  }
+}
+
 function when(ts?: number) {
   if (!ts) return "—";
   const d = new Date(ts);
@@ -210,7 +238,35 @@ export default function WalletPage() {
   }, []);
 
   useEffect(() => {
-    void load();
+    (async () => {
+      // Promote the device list BEFORE the first read, so the wallet already
+      // includes accounts added before this change. The server ignores the call
+      // once the account has entries of its own, so repeating it is harmless.
+      const legacy = legacyDeviceAccounts();
+      if (legacy.length) {
+        const res = await fetch("/api/payout-accounts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "import", accounts: legacy }),
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .catch(() => null);
+        // The device copy is dropped ONLY once the server has taken all of it.
+        // Clearing it unconditionally — as this used to — meant an entry the
+        // server rejected was deleted from the browser too, so the customer's
+        // only copy of their bank details was gone for good. A leftover
+        // localStorage key costs nothing; losing the account does not.
+        if (res && Number(res.skipped) === 0) {
+          try {
+            localStorage.removeItem(LEGACY_BANK_KEY);
+            localStorage.removeItem(LEGACY_UPI_KEY);
+          } catch {
+            /* nothing to clean */
+          }
+        }
+      }
+      await load();
+    })();
   }, [load]);
 
   async function pay(amount: number) {

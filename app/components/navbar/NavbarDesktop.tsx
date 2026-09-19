@@ -18,6 +18,13 @@ import { apiURL } from "@/app/components/apiURL";
 // `auth: true` links are removed from the bar for visitors. They would only
 // bounce off the proxy into /login, and showing them advertises pages a
 // logged-out visitor has no business navigating to.
+// The bar is the MARKET. Account surfaces deliberately are not here — they live
+// on the avatar menu, and every destination gets exactly one home.
+//
+// Positions, Watchlist and Profile used to sit in this bar AND in the avatar
+// menu, so three destinations were offered twice in one chrome, and the bar ran
+// to ten entries that scrolled off the right edge of a laptop. All three are
+// now on the avatar, which is where "my account" belongs.
 const NAV_LINKS = [
   { label: "Dashboard", href: "/dashboard", auth: true },
   { label: "Stocks", href: "/stocks" },
@@ -27,13 +34,10 @@ const NAV_LINKS = [
   // existed, was finished, and nobody could see it.
   { label: "Commodities", href: "/commodities" },
   { label: "Screener", href: "/screener" },
-  { label: "Positions", href: "/positions", auth: true },
-  { label: "Watchlist", href: "/watchlist", auth: true },
   { label: "Top Movers", href: "/topmovers" },
   // Public on purpose: news is not account data, so it is a shop-window page
   // like /stocks and /topmovers rather than something to gate behind a login.
   { label: "News", href: "/news" },
-  { label: "Profile", href: "/profile", auth: true },
 ];
 
 const RECENT_KEY = "fs_recent_searches";
@@ -295,11 +299,12 @@ export default function NavbarDesktop(props: any) {
                     {[
                       { label: "Profile", href: "/profile" },
                       { label: "Portfolio", href: "/portfolio" },
+                      { label: "Positions", href: "/positions" },
                       { label: "Orders", href: "/portfolio/orders" },
+                      { label: "Watchlist", href: "/watchlist" },
                       { label: "Wallet", href: "/wallet" },
                       { label: "Ledger", href: "/ledger" },
                       { label: "Settings", href: "/settings" },
-                      { label: "Watchlist", href: "/watchlist" },
                       { label: "Log out", href: "/logout" },
                     ].map((o) => (
                       <NavTransition

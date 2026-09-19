@@ -458,8 +458,11 @@ Base `app/components/apiURL.tsx`. Auth cookie `token` via `cookies-next`.
   - Banks preview, Quick actions grid.
 - `/profile/kyc`: 6-step stub (`fs_kyc_draft`: PAN/DOB/address/income/
   nominee/signature), progress bar, SAVE DRAFT only — wire backend later.
-- `/profile/banks`: device-only Banks (`fs_bank_accounts`) + UPI
-  (`fs_upi_ids`), IFSC/UPI regex, primary logic.
+- `/profile/banks`: **redirects to `/wallet`**. Destinations are edited in the
+  wallet only — two editors for one set of payout data could disagree, and the
+  wallet is where money actually moves. The device-only lists this page used to
+  promote (`fs_bank_accounts`, `fs_upi_ids`) are now promoted by the wallet, so
+  nothing saved on the old version is lost.
 - `/profile/security`, `/ledger`, `/settings`: password/sessions/token
   status, funds statement + CSV, theme/density/qty/confirm/clear trading data.
 

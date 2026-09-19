@@ -115,7 +115,9 @@ export default function Hamburger() {
                       href={item.href}
                       onClick={() => setIsOpen(false)}
                       className={`${dropdownClass} ${
-                        item.danger ? "text-negative" : "text-popover-foreground"
+                        item.danger
+                          ? "text-negative"
+                          : "text-popover-foreground"
                       }`}
                     >
                       {item.title}

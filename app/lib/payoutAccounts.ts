@@ -250,6 +250,14 @@ export function setDefaultAccount(userId: string, id: string): boolean {
  * used, so dropping them silently would look like the app lost their bank
  * details. Anything we cannot re-validate is skipped and counted rather than
  * stored hopefully — the validation above is the same gate a new account passes.
+ *
+ * ⚠️ Field names: the old device records used `holder` and `accountNo`, not
+ * `holderName` and `accountNumber`. Reading only the new spelling meant a
+ * legacy BANK account arrived with a null account number, failed validation,
+ * was reported as skipped, and was then cleared from the device by the caller
+ * anyway — so the customer's saved bank account disappeared permanently on the
+ * first visit. UPI escaped this because it always used `vpa`. Both spellings
+ * are accepted now.
  */
 export function importDeviceAccounts(
   userId: string,
@@ -267,9 +275,9 @@ export function importDeviceAccounts(
     const res = addAccount(userId, {
       kind: looksUpi ? "upi" : "bank",
       label: a?.label || a?.nickname || null,
-      holderName: a?.holderName || a?.name || null,
+      holderName: a?.holderName || a?.holder || a?.name || null,
       upiId: looksUpi,
-      accountNumber: a?.accountNumber || a?.account || null,
+      accountNumber: a?.accountNumber || a?.accountNo || a?.account || null,
       ifsc: a?.ifsc || null,
       bankName: a?.bankName || a?.bank || null,
     });

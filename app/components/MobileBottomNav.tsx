@@ -98,7 +98,11 @@ export default function MobileBottomNav() {
       <div className="px-3 pointer-events-auto">
         <div className="mx-auto max-w-[520px] border border-border bg-card/95 backdrop-blur-md shadow-[0_-8px_30px_rgba(0,0,0,0.45)]">
           <div className="h-[2px] w-full brand-gradient" />
-          <div className={TABS.length === 5 ? "grid grid-cols-5" : "grid grid-cols-6"}>
+          <div
+            className={
+              TABS.length === 5 ? "grid grid-cols-5" : "grid grid-cols-6"
+            }
+          >
             {TABS.map(({ href, label, Icon, hero }) => {
               const active = isActiveTab(path, href);
               if (hero) {

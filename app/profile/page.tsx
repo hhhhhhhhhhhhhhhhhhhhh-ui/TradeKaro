@@ -448,7 +448,7 @@ export default function ProfilePage() {
                   }
                 />
                 <Row
-                  href="/profile/banks"
+                  href="/wallet"
                   icon={<FiCreditCard size={17} aria-hidden />}
                   label="Banks & UPI"
                   sub={
