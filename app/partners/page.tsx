@@ -11,16 +11,20 @@ import {
   FiUsers,
   FiZap,
 } from "react-icons/fi";
-import { plans } from "@/app/lib/affiliates";
 
-// Public partner programme page. Server-rendered so the plans come from the
-// database (no client fetch, no loading state, and a crawlable page).
+// Public partner programme page.
+//
+// DELIBERATELY PUBLISHES NO RATES. Terms are agreed partner by partner, so the
+// page explains what the programme is and how earning works — on verified
+// deposits, never on signups — and quotes no percentage at all. Do not add a
+// rate back here without being asked: a number on this page becomes a promise
+// we then have to honour for everyone, which is the opposite of negotiating.
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "TradeStox Partners — get paid for the traders you send",
   description:
-    "Earn a share of every verified deposit from the traders you refer. Transparent rates, UPI and USDT payouts, and a live dashboard.",
+    "Earn a share of every verified deposit from the traders you refer. UPI and USDT payouts, and a live dashboard showing what your traffic is worth.",
 };
 
 const FEATURES: [React.ReactNode, string, string][] = [
@@ -57,8 +61,6 @@ const FEATURES: [React.ReactNode, string, string][] = [
 ];
 
 export default function PartnersLanding() {
-  const tiers = plans();
-
   return (
     <div className="min-h-dvh bg-background">
       {/* ── Top bar ─────────────────────────────────────────────────────── */}
@@ -129,7 +131,6 @@ export default function PartnersLanding() {
 
           <div className="mt-8 flex flex-wrap gap-x-8 gap-y-4">
             {[
-              { k: "Commission", v: "Up to 35%" },
               { k: "Attribution window", v: "60 days" },
               { k: "Payouts", v: "UPI · Bank · USDT" },
               { k: "Review time", v: "1 working day" },
@@ -147,66 +148,30 @@ export default function PartnersLanding() {
         </div>
       </section>
 
-      {/* ── Plans ───────────────────────────────────────────────────────── */}
+      {/* ── How you get paid ─────────────────────────────────────────────── */}
       <section className="border-y border-border bg-card/40">
         <div className="mx-auto max-w-[1120px] px-4 py-12 lg:px-8">
           <h2 className="text-[22px] font-semibold tracking-tight text-foreground sm:text-[26px]">
-            Three ways to be paid
+            How you get paid
           </h2>
           <p className="mt-2 max-w-[64ch] text-[13.5px] leading-relaxed text-muted-foreground">
-            Your rate is set when your application is approved. All three models
-            pay on{" "}
+            Your terms are agreed with you directly, when we review your
+            application — they depend on your audience, your channels and the
+            volume you can bring, so we would rather talk than post a number
+            that fits nobody.
+          </p>
+          <p className="mt-4 max-w-[64ch] text-[13.5px] leading-relaxed text-muted-foreground">
+            What every partner gets is the same rule underneath: we pay on{" "}
             <strong className="font-semibold text-foreground">
               verified deposits
             </strong>{" "}
-            — real money that actually arrived, never on signups alone.
+            — real money that actually arrived, confirmed by the payment
+            gateway. Never on signups alone, and never on a number the gateway
+            did not receive.
           </p>
-
-          <div className="mt-7 grid gap-4 md:grid-cols-3">
-            {tiers.map((p) => (
-              <div
-                key={p.id}
-                className="broker-card broker-card-hover relative flex flex-col p-5"
-              >
-                {p.model === "hybrid" ? (
-                  <span className="absolute right-4 top-4 rounded-full border border-brand/30 bg-brand/10 px-2 py-0.5 text-[10px] font-semibold text-brand">
-                    Most common
-                  </span>
-                ) : null}
-                <div className="text-[13px] font-semibold text-foreground">
-                  {p.name}
-                </div>
-                <div className="display-num mt-3 text-[32px] font-semibold leading-none text-brand">
-                  {p.model === "deposit"
-                    ? `${p.depositRate}%`
-                    : p.model === "revshare"
-                      ? `${p.revRate}%`
-                      : `${p.depositRate}%`}
-                </div>
-                <div className="mt-1 text-[11.5px] font-medium uppercase tracking-[0.12em] text-muted-foreground">
-                  {p.modelLabel}
-                </div>
-                <p className="mt-3 flex-1 text-[12.5px] leading-relaxed text-muted-foreground">
-                  {p.model === "deposit"
-                    ? "A one-off cut of each customer's first verified deposit. Best when you bring high-intent traders."
-                    : p.model === "revshare"
-                      ? "A recurring share of every verified deposit your customers make, for as long as they keep depositing."
-                      : `A one-off ${p.depositRate}% on the first deposit, plus a recurring ${p.revRate}% on every deposit after it.`}
-                </p>
-                <div className="mt-4 space-y-1.5 border-t border-border/60 pt-3">
-                  <Mini k="Holdback" v={`${p.holdDays} days`} />
-                  <Mini
-                    k="Minimum payout"
-                    v={`₹${p.minPayout.toLocaleString("en-IN")}`}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <p className="mt-4 text-[11.5px] text-muted-foreground">
-            Rates shown are our standard tiers. Higher volumes are negotiated
-            individually — ask when you apply.
+          <p className="mt-4 max-w-[64ch] text-[13.5px] leading-relaxed text-muted-foreground">
+            Apply, tell us what you do, and we will come back with an offer —
+            usually within one working day.
           </p>
         </div>
       </section>
@@ -339,17 +304,6 @@ export default function PartnersLanding() {
           Apply as a partner
         </Link>
       </div>
-    </div>
-  );
-}
-
-function Mini({ k, v }: { k: string; v: string }) {
-  return (
-    <div className="flex items-center justify-between gap-2">
-      <span className="text-[11.5px] text-muted-foreground">{k}</span>
-      <span className="display-num text-[12px] font-medium text-foreground">
-        {v}
-      </span>
     </div>
   );
 }
