@@ -14,7 +14,7 @@ const g = globalThis as any;
 // Bump whenever a table or index is added below. Next dev reuses the cached
 // handle across hot reloads, so the revision check re-applies this idempotent
 // DDL and new tables exist without restarting the server.
-const SCHEMA_REV = 9;
+const SCHEMA_REV = 13;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -266,6 +266,269 @@ const SCHEMA = `
       ON withdrawals(status, requested_at);
     CREATE INDEX IF NOT EXISTS ix_withdrawals_payout
       ON withdrawals(payout_id);
+
+    -- ── affiliates / partners ────────────────────────────────────────────────
+    --
+    -- A DELIBERATELY SEPARATE identity store from the users table. An affiliate
+    -- is not a trader and must never be one by accident: different table,
+    -- different cookie (partner_token), different signing key. A partner token
+    -- cannot open a trader session and a trader token cannot open a partner
+    -- session, because they are not even signed with the same key.
+    CREATE TABLE IF NOT EXISTS affiliates (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL,
+      name TEXT NOT NULL,
+      email TEXT NOT NULL,
+      phone TEXT,
+      company TEXT,
+      website TEXT,
+      audience TEXT,
+      pass_hash TEXT NOT NULL,
+      salt TEXT NOT NULL,
+      /** pending | approved | rejected | suspended */
+      status TEXT NOT NULL DEFAULT 'pending',
+      plan_id TEXT,
+      /** Per-affiliate override of the plan; null means "use the plan". */
+      model TEXT,
+      deposit_rate REAL,
+      rev_rate REAL,
+      note TEXT,
+      reject_reason TEXT,
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by TEXT,
+      login_count INTEGER NOT NULL DEFAULT 0,
+      last_login INTEGER
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_affiliates_email
+      ON affiliates(lower(email));
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_affiliates_code
+      ON affiliates(code);
+    CREATE INDEX IF NOT EXISTS ix_affiliates_status
+      ON affiliates(status, created_at);
+
+    -- One row per landing page click. Written server-side when the page renders,
+    -- because a cookie alone is both clearable and forgeable.
+    --
+    -- day and device exist so a partner refreshing their own link does not
+    -- inflate their click count. Every page load still writes a row (the raw
+    -- number is worth keeping), but only the first from one device in one day is
+    -- flagged is_unique, and it is that pair the panel reports. Without this a
+    -- partner testing their link ten times saw ten clicks and no signups, which
+    -- reads as "my traffic is terrible" when it is their own browser.
+    CREATE TABLE IF NOT EXISTS affiliate_clicks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL,
+      ts INTEGER NOT NULL,
+      ip TEXT,
+      ua TEXT,
+      landing TEXT,
+      campaign TEXT,
+      referer TEXT,
+      /** YYYY-MM-DD in UTC — the bucket a device is made unique within. */
+      day TEXT,
+      /** Short hash of ip + user agent. Never a raw fingerprint. */
+      device TEXT,
+      /** 1 for the first click from this device on this day, else 0. */
+      is_unique INTEGER NOT NULL DEFAULT 1,
+      /** Set when this click turned into an account. */
+      user_id TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_aff_clicks_code ON affiliate_clicks(code, ts);
+    -- NOTE: the (code, day, device) index is deliberately NOT created here.
+    -- day and device are migration columns, so on a database that predates
+    -- SCHEMA_REV 11 the CREATE TABLE above is a no-op and the columns do not
+    -- exist yet. Creating the index here would abort the whole schema exec with
+    -- "no such column: day" *before* ensureColumns() ever got a chance to add
+    -- them — taking the entire app down, not just this one index. ensureColumns()
+    -- creates it after the ALTERs instead.
+
+    -- Things a partner has asked us for. Deliberately small: one row per
+    -- request, decided by an operator in the console. Replaces a mailto link
+    -- that left the panel and needed a configured mail client to work at all.
+    CREATE TABLE IF NOT EXISTS affiliate_requests (
+      id TEXT PRIMARY KEY,
+      affiliate_id TEXT NOT NULL,
+      /** landing_page | creative | other */
+      kind TEXT NOT NULL DEFAULT 'landing_page',
+      title TEXT NOT NULL,
+      detail TEXT,
+      audience TEXT,
+      /** open | done | declined */
+      status TEXT NOT NULL DEFAULT 'open',
+      note TEXT,
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_aff_requests_aff
+      ON affiliate_requests(affiliate_id, created_at);
+    CREATE INDEX IF NOT EXISTS ix_aff_requests_status
+      ON affiliate_requests(status, created_at);
+
+    -- The permanent, one-time binding: one customer belongs to one affiliate.
+    CREATE TABLE IF NOT EXISTS affiliate_referrals (
+      user_id TEXT PRIMARY KEY,
+      affiliate_id TEXT NOT NULL,
+      code TEXT NOT NULL,
+      landing TEXT,
+      campaign TEXT,
+      /** Real money verified from this customer, in paise-free rupees. */
+      deposited REAL NOT NULL DEFAULT 0,
+      /** Reversed commission, kept visible rather than deleted. */
+      reversed REAL NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_aff_refs_aff
+      ON affiliate_referrals(affiliate_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS affiliate_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      /** deposit | revshare | hybrid */
+      model TEXT NOT NULL,
+      deposit_rate REAL NOT NULL DEFAULT 0,
+      rev_rate REAL NOT NULL DEFAULT 0,
+      /** Days a commission waits before it can be approved. */
+      hold_days INTEGER NOT NULL DEFAULT 21,
+      min_payout REAL NOT NULL DEFAULT 1000,
+      active INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL
+    );
+
+    -- The commission ledger. Money is never paid from a deposit alone: a row is
+    -- created pending, becomes approvable after the holdback, and only then can
+    -- be paid. A customer who withdraws it back reverses the row instead.
+    CREATE TABLE IF NOT EXISTS affiliate_commissions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      affiliate_id TEXT NOT NULL,
+      user_id TEXT,
+      /** Which deposit (or other event) produced this. */
+      source TEXT,
+      idem TEXT,
+      base_amount REAL NOT NULL DEFAULT 0,
+      rate REAL NOT NULL DEFAULT 0,
+      amount REAL NOT NULL DEFAULT 0,
+      /** pending | approved | paid | reversed */
+      status TEXT NOT NULL DEFAULT 'pending',
+      hold_until INTEGER,
+      created_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by TEXT,
+      note TEXT,
+      /**
+       * The terms this commission was actually earned under, snapshotted at the
+       * moment of the deposit.
+       *
+       * These exist because the alternative is unanswerable. Reading the live
+       * rate and holdback at payout time means "why is this number this number"
+       * has no answer once a rate changes, and a partner who asks gets a
+       * shrug. With these, every row explains itself forever.
+       */
+      model TEXT,
+      plan_id TEXT,
+      hold_days INTEGER,
+      /** The trade_deposits row that produced it, so the money can be traced. */
+      deposit_id INTEGER,
+      /**
+       * When the money ARRIVED, which is not when the row was written.
+       *
+       * A commission created by the reconciliation repair is written today for
+       * a deposit made in March; dating it today would put it in the wrong
+       * month on every chart and in the wrong holdback window.
+       */
+      earned_at INTEGER,
+      /** 1 when the row was created by reconciliation rather than live. */
+      reconciled INTEGER NOT NULL DEFAULT 0
+    );
+
+    -- Append-only record of the commercial terms an affiliate was on, and when.
+    --
+    -- "What was this partner's rate on 3 June" is a question that WILL be
+    -- asked, by a partner disputing a number or by us reconciling one. Without
+    -- this the only answer is today's rate, applied to yesterday's money.
+    CREATE TABLE IF NOT EXISTS affiliate_terms_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      affiliate_id TEXT NOT NULL,
+      /** When these terms took effect. */
+      at INTEGER NOT NULL,
+      model TEXT,
+      deposit_rate REAL,
+      rev_rate REAL,
+      hold_days INTEGER,
+      min_payout REAL,
+      plan_id TEXT,
+      /** Who changed them, and why. Free text, for humans. */
+      actor TEXT,
+      reason TEXT
+    );
+    CREATE INDEX IF NOT EXISTS ix_aff_terms_aff
+      ON affiliate_terms_history(affiliate_id, at);
+    CREATE UNIQUE INDEX IF NOT EXISTS ux_aff_comm_idem
+      ON affiliate_commissions(idem) WHERE idem IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS ix_aff_comm_aff
+      ON affiliate_commissions(affiliate_id, created_at);
+    CREATE INDEX IF NOT EXISTS ix_aff_comm_status
+      ON affiliate_commissions(status, hold_until);
+
+    CREATE TABLE IF NOT EXISTS affiliate_payout_accounts (
+      id TEXT PRIMARY KEY,
+      affiliate_id TEXT NOT NULL,
+      /** upi | bank | usdt */
+      kind TEXT NOT NULL,
+      label TEXT,
+      holder TEXT,
+      upi_id TEXT,
+      account_tail TEXT,
+      ifsc TEXT,
+      bank_name TEXT,
+      usdt_address TEXT,
+      usdt_network TEXT,
+      is_default INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_aff_acct_aff
+      ON affiliate_payout_accounts(affiliate_id, created_at);
+
+    -- Payouts are REQUESTED by the partner and sent BY HAND by an operator.
+    -- There is deliberately no payout API integration: a crypto or UPI transfer
+    -- is irreversible, so a human approves the destination before money moves.
+    CREATE TABLE IF NOT EXISTS affiliate_payouts (
+      id TEXT PRIMARY KEY,
+      affiliate_id TEXT NOT NULL,
+      amount REAL NOT NULL,
+      /** upi | bank | usdt */
+      method TEXT NOT NULL,
+      account_id TEXT,
+      destination TEXT,
+      /** requested | approved | paid | rejected */
+      status TEXT NOT NULL DEFAULT 'requested',
+      note TEXT,
+      utr TEXT,
+      requested_at INTEGER NOT NULL,
+      decided_at INTEGER,
+      decided_by TEXT,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS ix_aff_payout_aff
+      ON affiliate_payouts(affiliate_id, requested_at);
+    CREATE INDEX IF NOT EXISTS ix_aff_payout_status
+      ON affiliate_payouts(status, requested_at);
+
+    -- Landing pages as DATA, so a new one can be published without a deploy.
+    CREATE TABLE IF NOT EXISTS landing_pages (
+      slug TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      headline TEXT NOT NULL,
+      subheadline TEXT,
+      offer TEXT,
+      cta TEXT,
+      /** Which markets this page points at, e.g. "NSE · Options · Commodities" */
+      tags TEXT,
+      published INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
 `;
 
 // Columns added after the first release. `ALTER TABLE ADD COLUMN` is not
@@ -297,6 +560,137 @@ function ensureColumns(db: DatabaseSync) {
   db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_users_client_code
     ON users(client_code) WHERE client_code IS NOT NULL AND client_code <> ''`);
   backfillClientCodes(db);
+
+  // ── affiliate click de-duplication (SCHEMA_REV 11) ──
+  //
+  // Added after clicks had already been recorded, so an existing database needs
+  // the columns bolted on. `is_unique` defaults to 1, which is the honest
+  // answer for history: we cannot know whether two old rows were the same
+  // device, and inventing 0 would silently halve a partner's reported traffic.
+  const clickCols = new Set(
+    (db.prepare("PRAGMA table_info(affiliate_clicks)").all() as any[]).map(
+      (c) => String(c.name),
+    ),
+  );
+  if (!clickCols.has("day"))
+    db.exec("ALTER TABLE affiliate_clicks ADD COLUMN day TEXT");
+  if (!clickCols.has("device"))
+    db.exec("ALTER TABLE affiliate_clicks ADD COLUMN device TEXT");
+  if (!clickCols.has("is_unique"))
+    db.exec(
+      "ALTER TABLE affiliate_clicks ADD COLUMN is_unique INTEGER NOT NULL DEFAULT 1",
+    );
+  // `day` is derivable from `ts`, so backfill it rather than leaving NULL —
+  // otherwise every pre-migration row falls outside every day range and the
+  // dashboard would show a gap in the chart that never happened.
+  db.exec(`UPDATE affiliate_clicks
+     SET day = strftime('%Y-%m-%d', ts / 1000, 'unixepoch')
+     WHERE day IS NULL`);
+  db.exec(`CREATE INDEX IF NOT EXISTS ix_aff_clicks_unique
+    ON affiliate_clicks(code, day, device)`);
+
+  // ── commission ledger snapshots (SCHEMA_REV 12) ──
+  //
+  // Same rule as above: these columns are added by migration, so any index over
+  // them is created HERE, after the ALTERs, never in the SCHEMA literal.
+  const commCols = new Set(
+    (db.prepare("PRAGMA table_info(affiliate_commissions)").all() as any[]).map(
+      (c) => String(c.name),
+    ),
+  );
+  const addComm = (col: string, ddl: string) => {
+    if (!commCols.has(col)) db.exec(`ALTER TABLE affiliate_commissions ${ddl}`);
+  };
+  addComm("model", "ADD COLUMN model TEXT");
+  addComm("plan_id", "ADD COLUMN plan_id TEXT");
+  addComm("hold_days", "ADD COLUMN hold_days INTEGER");
+  addComm("deposit_id", "ADD COLUMN deposit_id INTEGER");
+  addComm("earned_at", "ADD COLUMN earned_at INTEGER");
+  addComm("reconciled", "ADD COLUMN reconciled INTEGER NOT NULL DEFAULT 0");
+  // Reconciliation has to find a customer's commissions by user, which no
+  // existing index covers — `ix_aff_comm_aff` is keyed on the affiliate.
+  db.exec(
+    "CREATE INDEX IF NOT EXISTS ix_aff_comm_user ON affiliate_commissions(user_id)",
+  );
+  // Backfill `earned_at` from `created_at`. It is the best available estimate,
+  // and for every row written before this revision the two really were the same
+  // moment. A NULL here would exclude the row from holdback and month buckets.
+  db.exec(
+    "UPDATE affiliate_commissions SET earned_at = created_at WHERE earned_at IS NULL",
+  );
+
+  // Give every affiliate that predates the terms history a starting row, dated
+  // to when they joined.
+  //
+  // This resolves the rate the same way `shape()` does — a NULL per-affiliate
+  // override means "inherit the plan" — so the backfilled terms say exactly what
+  // was in force. It is still an assumption for anyone whose rate changed before
+  // this revision, and `reconcileCommissions` reports any row it has to resolve
+  // this way rather than quietly trusting it.
+  db.exec(`INSERT INTO affiliate_terms_history
+      (affiliate_id, at, model, deposit_rate, rev_rate, hold_days, min_payout,
+       plan_id, actor, reason)
+    SELECT a.id, a.created_at,
+           COALESCE(a.model, p.model, 'deposit'),
+           COALESCE(a.deposit_rate, p.deposit_rate, 0),
+           COALESCE(a.rev_rate, p.rev_rate, 0),
+           COALESCE(p.hold_days, 21),
+           COALESCE(p.min_payout, 1000),
+           a.plan_id, 'system',
+           'backfilled at schema rev 12 from the terms on file'
+      FROM affiliates a
+      LEFT JOIN affiliate_plans p ON p.id = a.plan_id
+     WHERE NOT EXISTS (
+       SELECT 1 FROM affiliate_terms_history t WHERE t.affiliate_id = a.id)`);
+
+  // ── remove the unimplemented CPA field (SCHEMA_REV 13) ──
+  //
+  // `cpa_amount` was on both `affiliates` and `affiliate_plans`, written by the
+  // plan seeder and read into a type — but nothing ever turned a signup or a
+  // deposit into a CPA commission. A plan advertising one therefore silently
+  // paid only its deposit/revshare rates: a promise the engine did not keep.
+  //
+  // Removed rather than implemented, because a half-built payout rule is worse
+  // than an absent one. Nothing reads the column any more, so if the drop fails
+  // on an old SQLite the column simply sits there harmlessly — it must never be
+  // able to abort the schema exec and take the app down.
+  const dropIfPresent = (table: string, col: string) => {
+    const cols = new Set(
+      (db.prepare(`PRAGMA table_info(${table})`).all() as any[]).map((c) =>
+        String(c.name),
+      ),
+    );
+    if (!cols.has(col)) return;
+    try {
+      db.exec(`ALTER TABLE ${table} DROP COLUMN ${col}`);
+    } catch {
+      console.warn(
+        `[db] could not drop ${table}.${col} — unused, so harmless to leave.`,
+      );
+    }
+  };
+  dropIfPresent("affiliates", "cpa_amount");
+  dropIfPresent("affiliate_plans", "cpa_amount");
+
+  // A partner must never have two open payout requests at once. `requestPayout`
+  // checks this in code, but a check-then-insert is not atomic: two requests
+  // arriving together can both pass the check and both be written, letting the
+  // same balance be paid twice. This makes it impossible rather than unlikely.
+  //
+  // Created defensively. If a database already contains duplicates the CREATE
+  // fails, and a unhandled failure here would abort the whole schema exec and
+  // take the app down — the exact class of outage this file has suffered
+  // before. A missing index degrades a guarantee; a thrown error stops trading.
+  try {
+    db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS ux_aff_payout_open
+      ON affiliate_payouts(affiliate_id)
+      WHERE status IN ('requested','approved')`);
+  } catch {
+    console.warn(
+      "[db] ux_aff_payout_open not created — duplicate open payouts already exist. " +
+        "Resolve them, then restart to get the double-spend guard.",
+    );
+  }
 }
 
 /**
@@ -378,8 +772,76 @@ function open(): DatabaseSync {
   renameLedgerTables(db);
   db.exec(SCHEMA);
   ensureColumns(db);
+  seedAffiliates(db);
   importLegacy(db);
   return db;
+}
+
+// Starter commission plans and landing pages. Idempotent — every insert is an
+// `INSERT OR IGNORE` guarded by an explicit id, so an operator renaming or
+// re-pricing a plan later is never overwritten on the next boot.
+function seedAffiliates(db: DatabaseSync) {
+  const now = Date.now();
+  const plans: [string, string, string, number, number, number, number][] = [
+    // id, name, model, deposit %, rev %, hold days, min payout ₹
+    ["pl-std", "Standard", "deposit", 20, 0, 21, 1000],
+    ["pl-pro", "Pro Partner", "hybrid", 30, 15, 21, 2000],
+    ["pl-rev", "Revenue Share", "revshare", 0, 35, 30, 2500],
+  ];
+  const stmt = db.prepare(
+    `INSERT OR IGNORE INTO affiliate_plans
+       (id, name, model, deposit_rate, rev_rate, hold_days, min_payout, active, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?)`,
+  );
+  for (const [id, name, model, dr, rr, hold, min] of plans)
+    stmt.run(id, name, model, dr, rr, hold, min, now);
+
+  const pages: [string, string, string, string, string, string, string][] = [
+    [
+      "start",
+      "Start Trading",
+      "Trade Indian markets with a real broker-grade terminal",
+      "Live NSE options, equities and MCX commodities in one clean, fast workspace.",
+      "Zero-cost account · Instant demo credit to practise with",
+      "Open free account",
+      "NSE · BSE · MCX",
+    ],
+    [
+      "options",
+      "Options Edge",
+      "An options desk that does not get in your way",
+      "Strategy builder, live Greeks, payoff charts and an option chain that loads instantly.",
+      "Practise with virtual funds before you risk a rupee",
+      "Start with options",
+      "Options · F&O",
+    ],
+    [
+      "commodities",
+      "MCX Commodities",
+      "Gold, silver, crude — tracked the way professionals track them",
+      "Live MCX contracts, charting and margin calculators in the same terminal as your equities.",
+      "One account for NSE and MCX",
+      "Explore commodities",
+      "MCX · Commodities",
+    ],
+  ];
+  const pageStmt = db.prepare(
+    `INSERT OR IGNORE INTO landing_pages
+       (slug, title, headline, subheadline, offer, cta, tags, published, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+  );
+  for (const [slug, title, headline, subheadline, offer, cta, tags] of pages)
+    pageStmt.run(
+      slug,
+      title,
+      headline,
+      subheadline,
+      offer,
+      cta,
+      tags,
+      now,
+      now,
+    );
 }
 
 // One-time rename of the original paper_* tables to trade_*. Idempotent: it

@@ -1,5 +1,5 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usernameRegex, emailRegex } from "../components/regexHandlers";
 import axios from "axios";
 import { apiURL } from "../components/apiURL";
@@ -59,6 +59,25 @@ function ErrorLine({
 }
 
 export default function SignUpPage() {
+  // Affiliate attribution. A partner landing page (/l/<slug>?ref=PT-XXXXXX)
+  // links here, and the code is posted with the signup so the new account is
+  // bound to that partner. The register route also reads the `ref` cookie —
+  // this is the belt to the cookie's braces, and it works even when cookies are
+  // blocked. The server validates the code either way.
+  //
+  // Read from window rather than `useSearchParams()` on purpose: that hook
+  // forces this statically-prerendered page behind a Suspense boundary.
+  const [refCode, setRefCode] = useState("");
+  const [refCampaign, setRefCampaign] = useState("");
+  useEffect(() => {
+    try {
+      const q = new URLSearchParams(window.location.search);
+      setRefCode((q.get("ref") || "").trim().slice(0, 32));
+      setRefCampaign((q.get("c") || "").trim().slice(0, 80));
+    } catch {
+      /* no ref — a normal signup */
+    }
+  }, []);
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [username, setUsername] = useState("");
@@ -130,6 +149,7 @@ export default function SignUpPage() {
         email: mail,
         password: hashed,
         phone,
+        ...(refCode ? { ref: refCode, campaign: refCampaign } : {}),
       });
     } catch (err: any) {
       setLoading(false);

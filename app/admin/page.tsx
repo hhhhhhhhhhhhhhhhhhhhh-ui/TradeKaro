@@ -10,14 +10,18 @@ import {
   FiBarChart2,
   FiBell,
   FiCreditCard,
+  FiCheckCircle,
   FiEdit3,
   FiGrid,
+  FiInbox,
   FiKey,
+  FiLink2,
   FiList,
   FiMonitor,
   FiShield,
   FiTrendingDown,
   FiTrendingUp,
+  FiUserPlus,
   FiUsers,
 } from "react-icons/fi";
 import { money, moneySigned, num } from "@/app/lib/format";
@@ -34,6 +38,7 @@ import {
 } from "@/app/lib/withdrawKyc";
 import { usePublicConfig } from "@/app/hooks/usePublicConfig";
 import FinanceSection from "./sections/FinanceSection";
+import PartnersSection from "./sections/PartnersSection";
 import {
   Card,
   Kpi,
@@ -283,6 +288,38 @@ const SECTIONS: NavSection[] = [
     ],
   },
   {
+    id: "Partners",
+    icon: <FiLink2 size={16} aria-hidden />,
+    desc: "Affiliate programme — applications, terms, payouts",
+    tabs: [
+      {
+        id: "Applications",
+        icon: <FiUserPlus size={15} aria-hidden />,
+        desc: "Review applicants and set their terms",
+      },
+      {
+        id: "Affiliates",
+        icon: <FiUsers size={15} aria-hidden />,
+        desc: "Directory, performance and rate changes",
+      },
+      {
+        id: "Payout requests",
+        icon: <FiCreditCard size={15} aria-hidden />,
+        desc: "Pay partners, or record why not",
+      },
+      {
+        id: "Requests",
+        icon: <FiInbox size={15} aria-hidden />,
+        desc: "Landing pages and artwork they asked for",
+      },
+      {
+        id: "Reconciliation",
+        icon: <FiCheckCircle size={15} aria-hidden />,
+        desc: "Prove the commission ledger against the deposits",
+      },
+    ],
+  },
+  {
     id: "Platform",
     icon: <FiEdit3 size={16} aria-hidden />,
     desc: "Operators, audit and public copy",
@@ -343,9 +380,15 @@ export default function AdminPage() {
   const [waiting, setWaiting] = useState<{
     payouts: number;
     callbacks: number;
+    applications: number;
+    affiliatePayouts: number;
+    requests: number;
   }>({
     payouts: 0,
     callbacks: 0,
+    applications: 0,
+    affiliatePayouts: 0,
+    requests: 0,
   });
   const router = useRouter();
   const canEdit = role === "superadmin" || role === "operator";
@@ -367,7 +410,19 @@ export default function AdminPage() {
       // Best-effort: a console that cannot read the payment rail must still
       // render. The badge is an extra, not a dependency.
       try {
-        const pay = await fetch("/api/admin/payments").then((x) => x.json());
+        const [pay, aff, reqs] = await Promise.all([
+          fetch("/api/admin/payments")
+            .then((x) => x.json())
+            .catch(() => null),
+          // One call fills both affiliate badges: the overview carries the
+          // pending-application count and the waiting-payout count together.
+          fetch("/api/admin/affiliates?status=pending")
+            .then((x) => x.json())
+            .catch(() => null),
+          fetch("/api/admin/affiliate-requests?status=open")
+            .then((x) => x.json())
+            .catch(() => null),
+        ]);
         const bad = new Set([
           "bad_signature",
           "unknown_order",
@@ -380,9 +435,12 @@ export default function AdminPage() {
             ? pay.webhooks.filter((w: any) => bad.has(String(w?.outcome)))
                 .length
             : 0,
+          applications: Number(aff?.overview?.affiliates?.pending) || 0,
+          affiliatePayouts: Number(aff?.overview?.money?.awaitingCount) || 0,
+          requests: Number(reqs?.openCount) || 0,
         });
       } catch {
-        /* leave the badge at zero rather than blocking the page */
+        /* leave the badges at zero rather than blocking the page */
       }
     } catch (e: any) {
       setErr(e?.message || "Load failed");
@@ -613,6 +671,33 @@ export default function AdminPage() {
   ].filter(Boolean).length;
   const activeSection = sectionOf(tab);
   const tabMeta = NAV.find((n) => n.id === tab);
+
+  /**
+   * Work waiting inside a tab, as a badge.
+   *
+   * One lookup for every tab rather than a condition per tab: adding a counted
+   * page should mean adding a number here, not another `&&` in the markup.
+   * A tab with nothing waiting returns 0 and renders no badge at all.
+   */
+  const badgeFor = (id: string) =>
+    id === "Finance"
+      ? waiting.payouts
+      : id === "Applications"
+        ? waiting.applications
+        : id === "Payout requests"
+          ? waiting.affiliatePayouts
+          : id === "Requests"
+            ? waiting.requests
+            : 0;
+
+  const badgeLabel = (id: string, n: number) =>
+    id === "Finance"
+      ? `${n} pay-out request(s) waiting for approval`
+      : id === "Applications"
+        ? `${n} affiliate application(s) to review`
+        : id === "Requests"
+          ? `${n} partner request(s) waiting for an answer`
+          : `${n} affiliate payout request(s) waiting to be paid`;
   // A section is "open" when it owns the active tab. No separate expand state:
   // one less thing to get out of step with the content, and the sidebar can
   // never show a section as open while a different one is on screen.
@@ -701,6 +786,18 @@ export default function AdminPage() {
                 {waiting.payouts + waiting.callbacks}
               </span>
             ) : null}
+            {sec.id === "Partners" &&
+            waiting.applications + waiting.affiliatePayouts + waiting.requests >
+              0 ? (
+              <span
+                title={`${waiting.applications} application(s) to review, ${waiting.affiliatePayouts} affiliate payout(s) to pay, ${waiting.requests} request(s) to answer`}
+                className="shrink-0 rounded-full bg-negative px-1.5 py-0.5 text-[10px] font-bold text-negative-foreground"
+              >
+                {waiting.applications +
+                  waiting.affiliatePayouts +
+                  waiting.requests}
+              </span>
+            ) : null}
           </button>
 
           {/* The section's pages, always visible while it is the active one —
@@ -729,16 +826,16 @@ export default function AdminPage() {
                       {t.desc}
                     </span>
                   </span>
-                  {t.id === "Finance" && waiting.payouts > 0 ? (
+                  {badgeFor(t.id) > 0 ? (
                     <span
-                      title={`${waiting.payouts} pay-out request(s) waiting for approval`}
+                      title={badgeLabel(t.id, badgeFor(t.id))}
                       className={`shrink-0 rounded-full px-1.5 text-[10px] font-bold ${
                         tab === t.id
                           ? "bg-brand-foreground/25 text-brand-foreground"
                           : "bg-negative text-negative-foreground"
                       }`}
                     >
-                      {waiting.payouts}
+                      {badgeFor(t.id)}
                     </span>
                   ) : null}
                 </button>
@@ -1757,6 +1854,26 @@ export default function AdminPage() {
               needs the order, the callback and the ledger on one screen. */}
           {tab === "Finance" && (
             <FinanceSection s={s} save={save} canEdit={canEdit} role={role} />
+          )}
+          {/* One component, three views: the affiliate programme is one job with
+              three stages, and splitting it into three components would triplicate
+              the fetches and let the numbers drift apart. */}
+          {(tab === "Applications" ||
+            tab === "Affiliates" ||
+            tab === "Payout requests" ||
+            tab === "Requests" ||
+            tab === "Reconciliation") && (
+            <PartnersSection
+              view={
+                tab as
+                  | "Applications"
+                  | "Affiliates"
+                  | "Payout requests"
+                  | "Requests"
+                  | "Reconciliation"
+              }
+              canEdit={canEdit}
+            />
           )}
           {tab === "Customers" && <UsersSection canEdit={canEdit} />}
           {tab === "Sessions" && (

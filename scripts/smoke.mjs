@@ -4,7 +4,7 @@
 // SMOKE_ONLY=<substring> runs just the checks whose name contains it, which is
 // handy against a live host where you want one answer and not a full database
 // of test traffic.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 const BASE = process.argv[2] || "http://localhost:3000";
 const ONLY = process.env.SMOKE_ONLY || "";
@@ -1406,6 +1406,446 @@ await check("auth: private pages redirect visitors to /login", async () => {
         : `${PRIVATE.length} private bounced, ${PUBLIC.length} public open`,
   };
 });
+
+// ── affiliates / partners ────────────────────────────────────────────────────
+//
+// The affiliate panel is a SECOND identity system in the same app: its own
+// cookie, its own signing key, its own audience claim. These checks exist
+// because the failure mode is silent and severe — if a trader session could open
+// /partners, or a partner token could read trader APIs, "logged in" would mean
+// two unrelated things at once.
+await check("partners: public pages open, the panel is locked", async () => {
+  const PUBLIC = ["/partners", "/partners/login", "/partners/join", "/l/start"];
+  const PRIVATE = [
+    "/partners/dashboard",
+    "/partners/links",
+    "/partners/stats",
+    "/partners/referrals",
+    "/partners/earnings",
+    "/partners/payouts",
+    "/partners/profile",
+  ];
+
+  const probe = async (p) => {
+    const r = await fetch(BASE + p, { redirect: "manual" });
+    return {
+      status: r.status,
+      to: r.headers.get("location") || "",
+      cache: r.headers.get("cache-control") || "",
+      cookie: r.headers.get("set-cookie") || "",
+    };
+  };
+
+  const broken = [];
+  for (const p of PUBLIC) {
+    const r = await probe(p);
+    if (r.status !== 200) broken.push(`${p}->${r.status}`);
+  }
+
+  const leaks = [];
+  for (const p of PRIVATE) {
+    const r = await probe(p);
+    // Must land on the PARTNER login, not the trader one — sending a partner to
+    // /login drops them into the wrong product entirely.
+    const bounced =
+      r.status >= 300 && r.status < 400 && r.to.includes("/partners/login");
+    if (!bounced || !r.to.includes("next="))
+      leaks.push(`${p}->${r.status}${r.to ? `:${r.to}` : ""}`);
+    else if (!r.cache.includes("no-store"))
+      leaks.push(`${p} bounce cacheable (${r.cache || "none"})`);
+  }
+
+  return {
+    ok: !broken.length && !leaks.length,
+    info: broken.length
+      ? `public partner page not 200: ${broken.join(", ")}`
+      : leaks.length
+        ? `NOT PROTECTED: ${leaks.join(", ")}`
+        : `${PRIVATE.length} partner pages bounced, ${PUBLIC.length} public open`,
+  };
+});
+
+// A landing page carries the referral onward. The `ref` cookie is set on the
+// edge so attribution works before any JavaScript runs.
+await check("partners: a landing link sets the referral cookie", async () => {
+  const r = await fetch(`${BASE}/l/start?ref=PT-SMOKE1&c=smoke`, {
+    redirect: "manual",
+  });
+  const cookies = (r.headers.getSetCookie?.() || []).join(";");
+  if (r.status !== 200) return { ok: false, info: `status=${r.status}` };
+  const hasRef = /(?:^|;\s*)ref=PT-SMOKE1/.test(cookies);
+  const hasCampaign = /ref_c=smoke/.test(cookies);
+  return {
+    ok: hasRef && hasCampaign,
+    info: `status=200 ref=${hasRef ? "set" : "MISSING"} campaign=${hasCampaign ? "set" : "MISSING"}`,
+  };
+});
+
+await check("partners: an unknown landing page is a clean 404", async () => {
+  const r = await fetch(`${BASE}/l/no-such-page-zzz`, { redirect: "manual" });
+  return { ok: r.status === 404, info: `status=${r.status}` };
+});
+
+// The whole point of a separate identity store: a real, valid trader session
+// must still be a stranger on the partner surface, in both directions.
+await check(
+  "partners: a trader session cannot open the partner panel",
+  async () => {
+    if (!accountToken)
+      return { ok: false, info: "no trader session to test with" };
+
+    const page = await fetch(`${BASE}/partners/dashboard`, {
+      redirect: "manual",
+      headers: { cookie: `token=${accountToken}` },
+    });
+    const bounced =
+      page.status >= 300 &&
+      page.status < 400 &&
+      (page.headers.get("location") || "").includes("/partners/login");
+
+    const api = await fetch(`${BASE}/api/partners/me`, {
+      headers: { authorization: `Bearer ${accountToken}` },
+    });
+
+    return {
+      ok: bounced && api.status === 401,
+      info: `page=${page.status}${bounced ? " (bounced)" : " (NOT bounced)"} api=${api.status}`,
+    };
+  },
+);
+
+await check(
+  "partners: the partner API refuses an anonymous caller",
+  async () => {
+    const paths = [
+      "/api/partners/me",
+      "/api/partners/links",
+      "/api/partners/earnings",
+      "/api/partners/referrals",
+      "/api/partners/payouts",
+      "/api/partners/accounts",
+    ];
+    const leaks = [];
+    for (const p of paths) {
+      const r = await fetch(BASE + p);
+      if (r.status !== 401) leaks.push(`${p}->${r.status}`);
+    }
+    return {
+      ok: !leaks.length,
+      info: leaks.length
+        ? `NOT GUARDED: ${leaks.join(", ")}`
+        : `${paths.length} routes 401`,
+    };
+  },
+);
+
+await check(
+  "partners: registration is reviewed, never self-approved",
+  async () => {
+    // A deliberately weak password (short hash) must be refused, and a valid
+    // application must come back `pending` — approval is a human decision in the
+    // console, never something the public form can set.
+    const weak = await fetch(`${BASE}/api/partners/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Smoke Bot",
+        email: `smoke${Date.now()}@x.in`,
+        password: "abc",
+      }),
+    });
+    const stamp = Date.now();
+    const email = `smoke-partner-${stamp}@example.com`;
+    const ok = await fetch(`${BASE}/api/partners/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Smoke Partner",
+        email,
+        phone: "9812345678",
+        password: "a".repeat(64),
+      }),
+    });
+    const payload = await ok.json().catch(() => ({}));
+    const applied =
+      ok.status === 200 && payload.status === "pending" && !payload.token;
+    return {
+      ok: weak.status === 400 && applied,
+      info: `weak=${weak.status} valid=${ok.status} status=${payload.status} token=${payload.token ? "ISSUED (leak!)" : "none"}`,
+    };
+  },
+);
+
+// ── affiliate programme: the operator side ───────────────────────────────────
+//
+// The partner panel is useless without the console half — a partner can request
+// a payout and nothing in the product can pay them. These checks cover the join
+// between the two: an approval made here must change what the applicant can do
+// there, in both directions.
+
+await check(
+  "partners admin: the console API refuses a non-operator",
+  async () => {
+    const anonGet = await get("/api/admin/affiliates");
+    const anonPost = await post("/api/admin/affiliates", {
+      action: "decide",
+      id: "x",
+      status: "approved",
+    });
+    const anonPay = await get("/api/admin/affiliate-payouts");
+    const anonPayPost = await post("/api/admin/affiliate-payouts", {
+      id: "x",
+      status: "paid",
+    });
+    const all = [
+      anonGet.status,
+      anonPost.status,
+      anonPay.status,
+      anonPayPost.status,
+    ];
+    return {
+      ok: all.every((s) => s === 403),
+      info: `GET=${anonGet.status} POST=${anonPost.status} payouts=${anonPay.status} payoutsPOST=${anonPayPost.status}`,
+    };
+  },
+);
+
+await check(
+  "partners admin: an out-of-range rate is refused, not silently cleared",
+  async () => {
+    const cookie = await adminSession();
+    if (!cookie) return { ok: false, info: "no console session" };
+    const h = { Cookie: "admin_token=" + cookie };
+    // A missing id is the cheapest way to exercise validation without touching a
+    // real partner: the rate check runs before the lookup.
+    const high = await post(
+      "/api/admin/affiliates",
+      { action: "decide", id: "af_smoke_missing", depositRate: 500 },
+      h,
+    );
+    const neg = await post(
+      "/api/admin/affiliates",
+      { action: "decide", id: "af_smoke_missing", revRate: -5 },
+      h,
+    );
+    const junk = await post(
+      "/api/admin/affiliates",
+      { action: "decide", id: "af_smoke_missing", depositRate: "abc" },
+      h,
+    );
+    // 400 (refused), never 404 (looked up and then quietly coerced to "inherit").
+    const codes = [high.status, neg.status, junk.status];
+    return {
+      ok: codes.every((s) => s === 400),
+      info: `500%=${high.status} -5%=${neg.status} abc=${junk.status}`,
+    };
+  },
+);
+
+await check(
+  "partners admin: approve an applicant and they can sign in",
+  async () => {
+    const cookie = await adminSession();
+    if (!cookie) return { ok: false, info: "no console session" };
+    const h = { Cookie: "admin_token=" + cookie };
+
+    const email = `smoke-admin-${Date.now()}@example.com`;
+    const secret = "SmokePartner1!";
+    const sha = (s) => createHash("sha256").update(s).digest("hex");
+
+    // 1. Apply through the public form.
+    const applied = await post("/api/partners/register", {
+      name: "Console Flow",
+      email,
+      phone: "9812345699",
+      password: sha(secret),
+    });
+    if (applied.status !== 200)
+      return {
+        ok: false,
+        info: `apply=${applied.status} ${applied.json?.error || ""}`,
+      };
+
+    // 2. A pending applicant cannot sign in yet.
+    const before = await post("/api/partners/login", {
+      email,
+      password: sha(secret),
+    });
+
+    // 3. Approve with a rate override, and confirm the override came back.
+    const list = await get("/api/admin/affiliates?status=pending", h);
+    const row = (list.json?.affiliates || []).find((x) => x.email === email);
+    if (!row)
+      return {
+        ok: false,
+        info: "the new application is not in the pending queue",
+      };
+
+    const approved = await post(
+      "/api/admin/affiliates",
+      {
+        action: "decide",
+        id: row.id,
+        status: "approved",
+        planId: "pl-rev",
+        depositRate: 33,
+        revRate: 17,
+        note: "smoke",
+      },
+      h,
+    );
+    const aff = approved.json?.affiliate;
+    const ratesOk = aff?.depositRate === 33 && aff?.revRate === 17;
+    const planOk = aff?.planId === "pl-rev";
+    const statusOk = aff?.status === "approved";
+
+    // 4. Now they can sign in.
+    const after = await post("/api/partners/login", {
+      email,
+      password: sha(secret),
+    });
+
+    // 5. Suspend, and the session is refused again immediately.
+    await post(
+      "/api/admin/affiliates",
+      { action: "decide", id: row.id, status: "suspended" },
+      h,
+    );
+    const suspended = await post("/api/partners/login", {
+      email,
+      password: sha(secret),
+    });
+
+    const ok =
+      before.status === 403 &&
+      approved.status === 200 &&
+      statusOk &&
+      ratesOk &&
+      planOk &&
+      after.status === 200 &&
+      !!after.json?.token &&
+      suspended.status === 403;
+
+    return {
+      ok,
+      info: `pending=${before.status} approve=${approved.status} ${aff?.status}/${aff?.planId} ${aff?.depositRate}%/${aff?.revRate}% login=${after.status} suspended=${suspended.status}`,
+    };
+  },
+);
+
+await check(
+  "partners admin: a rejection reason reaches the applicant",
+  async () => {
+    const cookie = await adminSession();
+    if (!cookie) return { ok: false, info: "no console session" };
+    const h = { Cookie: "admin_token=" + cookie };
+
+    const email = `smoke-reject-${Date.now()}@example.com`;
+    const seeded = "SmokeReject1!";
+    const sha = (s) => createHash("sha256").update(s).digest("hex");
+    await post("/api/partners/register", {
+      name: "Reject Flow",
+      email,
+      phone: "9812345698",
+      password: sha(seeded),
+    });
+
+    // Refusing without a reason must be refused: the applicant would be told
+    // nothing, which is worse than no decision at all.
+    const blank = await post(
+      "/api/admin/affiliates",
+      { action: "decide", id: "af_smoke_missing", status: "rejected" },
+      h,
+    );
+
+    const list = await get("/api/admin/affiliates?status=pending", h);
+    const row = (list.json?.affiliates || []).find((x) => x.email === email);
+    if (!row) return { ok: false, info: "application not found in the queue" };
+
+    const reason = "Smoke test — no verifiable audience.";
+    await post(
+      "/api/admin/affiliates",
+      {
+        action: "decide",
+        id: row.id,
+        status: "rejected",
+        rejectReason: reason,
+      },
+      h,
+    );
+
+    const login = await post("/api/partners/login", {
+      email,
+      password: sha(seeded),
+    });
+    const shown = String(login.json?.error || "");
+
+    return {
+      ok:
+        blank.status === 400 && login.status === 403 && shown.includes(reason),
+      info: `blank=${blank.status} login=${login.status} reason=${shown.includes(reason) ? "shown" : "MISSING"}`,
+    };
+  },
+);
+
+await check(
+  "partners admin: operator actions land in the audit log",
+  async () => {
+    const cookie = await adminSession();
+    if (!cookie) return { ok: false, info: "no console session" };
+    const h = { Cookie: "admin_token=" + cookie };
+    const s = await get("/api/admin/settings", h);
+    const entries = Array.isArray(s.json?.audit) ? s.json.audit : [];
+    const relevant = entries.filter((e) =>
+      ["affiliate.decide", "affiliate.payout"].includes(String(e.action)),
+    );
+    // The approvals above ran moments ago, so an empty log means the console is
+    // changing money terms with no record of who did it.
+    return {
+      ok: relevant.length > 0,
+      info: relevant.length
+        ? `${relevant.length} affiliate action(s) logged · latest: ${relevant[0].action} — ${String(relevant[0].detail).slice(0, 70)}`
+        : "NO affiliate actions in the audit log",
+    };
+  },
+);
+
+await check(
+  "partners admin: a closed payout cannot be re-decided",
+  async () => {
+    const cookie = await adminSession();
+    if (!cookie) return { ok: false, info: "no console session" };
+    const h = { Cookie: "admin_token=" + cookie };
+
+    const missing = await post(
+      "/api/admin/affiliate-payouts",
+      { id: "PO-SMOKE-NOPE", status: "paid" },
+      h,
+    );
+
+    const q = await get("/api/admin/affiliate-payouts?status=all", h);
+    // A paid or rejected payout is terminal: the money moved (or was refused), and
+    // a second edit would rewrite the record of something that already happened.
+    const closed = (q.json?.queue || []).find(
+      (p) => p.status === "paid" || p.status === "rejected",
+    );
+    if (!closed)
+      return {
+        ok: missing.status === 404,
+        info: `unknown-id=${missing.status}; no closed payout on this database to test the terminal rule — SKIPPED`,
+      };
+
+    const reopen = await post(
+      "/api/admin/affiliate-payouts",
+      { id: closed.id, status: closed.status === "paid" ? "rejected" : "paid" },
+      h,
+    );
+    return {
+      ok: missing.status === 404 && reopen.status === 409,
+      info: `unknown-id=${missing.status} reopen-${closed.status}=${reopen.status}`,
+    };
+  },
+);
 
 // ── a fresh session can actually open a protected page ───────────────────────
 // The reported symptom was "it says signed in but never leaves the sign-in

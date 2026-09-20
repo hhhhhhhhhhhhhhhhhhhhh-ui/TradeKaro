@@ -89,6 +89,12 @@ export default function MobileBottomNav() {
     return () => window.removeEventListener("storage", onStorage);
   }, [path]);
 
+  // The affiliate surface and its landing pages bring their own navigation. The
+  // trading dock on top of them would put two competing sets of tabs on one
+  // screen and pull a visitor away from the one action the page is asking for.
+  // Placed after every hook so the hook order stays identical on every route.
+  if (path.startsWith("/partners") || path.startsWith("/l/")) return null;
+
   return (
     <nav
       aria-label="Primary"

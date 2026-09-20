@@ -5,7 +5,12 @@ import { usePathname } from "next/navigation";
 // search, status bar — is noise for someone who has not signed up yet, and on
 // a phone it eats most of the viewport (and told visitors "CLOSED · POST-MARKET"
 // before they had read a word about the product).
-const AUTH_PATHS = ["/login", "/signup"];
+//
+// The affiliate surface gets the same treatment for the same reason, plus one
+// more: /partners and /l/<slug> are marketing pages that carry their own header,
+// footer and call to action. Leaving the trading chrome on them would put two
+// navigations on one screen and two competing "sign up" buttons on one page.
+const AUTH_PATHS = ["/login", "/signup", "/partners", "/l"];
 
 export default function HideOnAuth({
   children,

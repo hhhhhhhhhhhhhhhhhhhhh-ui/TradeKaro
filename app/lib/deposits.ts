@@ -1,3 +1,4 @@
+import { attributeDeposit } from "./affiliates";
 import { db } from "./db";
 
 // ── Deposits ────────────────────────────────────────────────────────────────
@@ -200,6 +201,26 @@ export function recordDeposit(input: {
     input.note ? String(input.note).slice(0, 300) : null,
     idem,
   );
+
+  // Credit any affiliate who referred this customer. Runs for admin and gateway
+  // money only (practice credits are filtered inside), and is keyed on the
+  // ledger row id, so a webhook retry cannot pay a partner twice.
+  //
+  // Wrapped on purpose: a partner-commission problem must never be able to roll
+  // back or fail the customer's deposit. The money is already in.
+  try {
+    const rid = db.prepare("SELECT last_insert_rowid() AS id").get() as
+      | { id?: number }
+      | undefined;
+    attributeDeposit({
+      depositId: Number(rid?.id) || 0,
+      userId: key,
+      amount,
+      method: input.method,
+    });
+  } catch {
+    /* never block a real deposit on affiliate bookkeeping */
+  }
 
   return { ok: true, total: total + amount, duplicate: false };
 }
