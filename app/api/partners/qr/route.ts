@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import QRCode from "qrcode";
 import { landingPage } from "@/app/lib/affiliates";
+import { publicBaseUrl } from "@/app/lib/requestProto";
 import { needPartner } from "../../partners/_guard";
 
 // GET /api/partners/qr?slug=start&c=instagram-reel-aug
@@ -28,7 +29,7 @@ export async function GET(req: NextRequest) {
   // characters in it the larger the modules print at the same physical size —
   // which is the difference between a flyer that scans and one that does not.
   const bare = g.affiliate.code.replace(/^PT-/, "");
-  const url = new URL(`/r/${bare}/${slug}`, req.nextUrl.origin);
+  const url = new URL(`/r/${bare}/${slug}`, publicBaseUrl(req));
   if (campaign) url.searchParams.set("c", campaign);
 
   try {

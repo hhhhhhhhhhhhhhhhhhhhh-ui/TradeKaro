@@ -22,3 +22,22 @@ export function isSecureRequest(req: NextRequest): boolean {
     return false;
   }
 }
+
+/**
+ * The public base URL this app is reachable at, for building links that leave
+ * the server.
+ *
+ * DO NOT build a public URL from the request's own origin. Behind the nginx
+ * proxy `req.nextUrl.origin` resolved to the app's internal listen address, so
+ * every generated link came out as `https://localhost:3000/...` — the affiliate
+ * short links, the landing-page URLs, and every QR code. It looked perfect in
+ * local development, where the internal address IS the public one, and was
+ * broken for everybody else the moment it was deployed.
+ *
+ * `PUBLIC_BASE_URL` is the configured truth. The request origin remains the
+ * fallback so local development needs no configuration.
+ */
+export function publicBaseUrl(req: NextRequest): string {
+  const configured = String(process.env.PUBLIC_BASE_URL || "").trim();
+  return (configured || req.nextUrl.origin).replace(/\/+$/, "");
+}

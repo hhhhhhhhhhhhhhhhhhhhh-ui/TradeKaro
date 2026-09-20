@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clickStats, landingPages } from "@/app/lib/affiliates";
+import { publicBaseUrl } from "@/app/lib/requestProto";
 import { needPartner } from "../_guard";
 
 // GET /api/partners/links
@@ -20,7 +21,8 @@ export async function GET(req: NextRequest) {
   const g = await needPartner(req);
   if (!g.ok) return g.response;
 
-  const origin = req.nextUrl.origin;
+  // Configured public URL, not the request origin — see `publicBaseUrl`.
+  const origin = publicBaseUrl(req);
   const code = g.affiliate.code;
   // `PT-DEMO01` → `DEMO01`. The prefix keeps codes from being mistaken for a
   // broker client code; it does not belong in a URL someone has to type.

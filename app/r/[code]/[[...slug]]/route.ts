@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { affiliateByCode, landingPage } from "@/app/lib/affiliates";
+import { publicBaseUrl } from "@/app/lib/requestProto";
 
 // GET /r/<code>            → the default landing page
 // GET /r/<code>/<slug>     → a specific landing page
@@ -67,7 +68,10 @@ export async function GET(
     params.set("preview", "1");
 
   const qs = params.toString();
-  const dest = new URL(`/l/${slug}${qs ? `?${qs}` : ""}`, req.nextUrl.origin);
+  // The CONFIGURED public URL, never the request's own origin — behind the
+  // proxy that resolved to the app's internal address, so the redirect sent
+  // every visitor to https://localhost:3000.
+  const dest = new URL(`/l/${slug}${qs ? `?${qs}` : ""}`, publicBaseUrl(req));
 
   return new NextResponse(null, {
     status: 302,

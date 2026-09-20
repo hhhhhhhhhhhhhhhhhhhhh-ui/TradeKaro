@@ -59,16 +59,22 @@ const where = [
 ].join(" OR ");
 
 const targets = db
-  .prepare(`SELECT id, code, name, email, status FROM affiliates WHERE ${where}`)
+  .prepare(
+    `SELECT id, code, name, email, status FROM affiliates WHERE ${where}`,
+  )
   .all(...DEMO_EMAILS, ...TEST_DOMAINS.map((d) => `%${d}`), ...DEMO_CODES);
 
 console.log(`${DB_PATH}${YES ? "" : "   [DRY RUN — pass --yes to apply]"}\n`);
 
 const all = db.prepare("SELECT COUNT(*) AS n FROM affiliates").get().n;
-console.log(`affiliates: ${all} total, ${targets.length} to remove, ${all - targets.length} kept\n`);
+console.log(
+  `affiliates: ${all} total, ${targets.length} to remove, ${all - targets.length} kept\n`,
+);
 
 for (const t of targets)
-  console.log(`  - ${t.code.padEnd(10)} ${String(t.status).padEnd(9)} ${t.email}`);
+  console.log(
+    `  - ${t.code.padEnd(10)} ${String(t.status).padEnd(9)} ${t.email}`,
+  );
 
 if (!targets.length) {
   console.log("\nNothing to remove.");
@@ -82,20 +88,53 @@ const marks = (n) => Array.from({ length: n }, () => "?").join(",");
 const countOf = (sql, params) => db.prepare(sql).get(...params).n;
 
 const knockOn = [
-  ["affiliate_commissions", `SELECT COUNT(*) AS n FROM affiliate_commissions WHERE affiliate_id IN (${marks(ids.length)})`, ids],
-  ["affiliate_referrals", `SELECT COUNT(*) AS n FROM affiliate_referrals WHERE affiliate_id IN (${marks(ids.length)})`, ids],
-  ["affiliate_payouts", `SELECT COUNT(*) AS n FROM affiliate_payouts WHERE affiliate_id IN (${marks(ids.length)})`, ids],
-  ["affiliate_payout_accounts", `SELECT COUNT(*) AS n FROM affiliate_payout_accounts WHERE affiliate_id IN (${marks(ids.length)})`, ids],
-  ["affiliate_requests", `SELECT COUNT(*) AS n FROM affiliate_requests WHERE affiliate_id IN (${marks(ids.length)})`, ids],
-  ["affiliate_terms_history", `SELECT COUNT(*) AS n FROM affiliate_terms_history WHERE affiliate_id IN (${marks(ids.length)})`, ids],
-  ["affiliate_clicks", `SELECT COUNT(*) AS n FROM affiliate_clicks WHERE code IN (${marks(codes.length)})`, codes],
+  [
+    "affiliate_commissions",
+    `SELECT COUNT(*) AS n FROM affiliate_commissions WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  ],
+  [
+    "affiliate_referrals",
+    `SELECT COUNT(*) AS n FROM affiliate_referrals WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  ],
+  [
+    "affiliate_payouts",
+    `SELECT COUNT(*) AS n FROM affiliate_payouts WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  ],
+  [
+    "affiliate_payout_accounts",
+    `SELECT COUNT(*) AS n FROM affiliate_payout_accounts WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  ],
+  [
+    "affiliate_requests",
+    `SELECT COUNT(*) AS n FROM affiliate_requests WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  ],
+  [
+    "affiliate_terms_history",
+    `SELECT COUNT(*) AS n FROM affiliate_terms_history WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  ],
+  [
+    "affiliate_clicks",
+    `SELECT COUNT(*) AS n FROM affiliate_clicks WHERE code IN (${marks(codes.length)})`,
+    codes,
+  ],
 ];
 
 console.log("");
 const plan = [];
 for (const [label, sql, params] of knockOn) {
   const n = countOf(sql, params);
-  plan.push({ label, sql: sql.replace(/^SELECT COUNT\(\*\) AS n/, "DELETE"), params, n });
+  plan.push({
+    label,
+    sql: sql.replace(/^SELECT COUNT\(\*\) AS n/, "DELETE"),
+    params,
+    n,
+  });
   console.log(`  ${String(n).padStart(5)}  ${label}`);
 }
 
@@ -125,7 +164,9 @@ if (custIds.length) {
     n: custIds.length,
   });
   console.log(`  ${String(d).padStart(5)}  trade_deposits (demo customers)`);
-  console.log(`  ${String(custIds.length).padStart(5)}  users (demo customers)`);
+  console.log(
+    `  ${String(custIds.length).padStart(5)}  users (demo customers)`,
+  );
 }
 
 if (!YES) {
@@ -136,9 +177,9 @@ if (!YES) {
 db.exec("BEGIN");
 try {
   for (const p of plan) db.prepare(p.sql).run(...p.params);
-  db.prepare(
-    `DELETE FROM affiliates WHERE id IN (${marks(ids.length)})`,
-  ).run(...ids);
+  db.prepare(`DELETE FROM affiliates WHERE id IN (${marks(ids.length)})`).run(
+    ...ids,
+  );
   db.exec("COMMIT");
 } catch (e) {
   db.exec("ROLLBACK");

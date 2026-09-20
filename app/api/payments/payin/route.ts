@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { tokenFromRequest, liveToken } from "@/app/lib/authStore";
+import { publicBaseUrl } from "@/app/lib/requestProto";
 import { accountKey, ensureAccount } from "@/app/lib/tradingServer";
 import { payinOrder, payinOrdersFor, startPayin } from "@/app/lib/payments";
 
@@ -25,8 +26,7 @@ async function me(req: NextRequest) {
 
 /** Where the gateway should call us back. Must be a public URL. */
 function notifyBase(req: NextRequest) {
-  const configured = String(process.env.PUBLIC_BASE_URL || "").trim();
-  return (configured || req.nextUrl.origin).replace(/\/+$/, "");
+  return publicBaseUrl(req);
 }
 
 /** Recent gateway orders for this account, so the panel can show pending ones. */
