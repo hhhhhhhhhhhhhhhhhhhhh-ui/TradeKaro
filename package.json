@@ -29,7 +29,7 @@
     "upstox-js-sdk": "^2.31.0"
   },
   "devDependencies": {
-    "@types/node": "^25",
+    "@types/node": "^26",
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
