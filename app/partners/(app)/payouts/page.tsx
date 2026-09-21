@@ -404,7 +404,7 @@ export default function PartnerPayouts() {
                   }}
                   className={`pressable rounded-[7px] px-3 py-1.5 text-[11.5px] font-semibold transition-colors ${
                     kind === k
-                      ? "brand-gradient text-white"
+                      ? "brand-panel text-brand-foreground"
                       : "text-muted-foreground hover:text-foreground"
                   }`}
                 >

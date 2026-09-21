@@ -67,7 +67,7 @@ export default function PartnersLanding() {
       <header className="sticky top-0 z-40 border-b border-border bg-card/85 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
           <Link href="/partners" className="flex items-center gap-2.5">
-            <span className="brand-gradient grid h-8 w-8 place-items-center rounded-xl text-[13px] font-black text-white">
+            <span className="brand-panel grid h-8 w-8 place-items-center rounded-xl text-[13px] font-black text-brand-foreground">
               TS
             </span>
             <span className="leading-none">
@@ -230,7 +230,7 @@ export default function PartnersLanding() {
                 key={t}
                 className="relative rounded-2xl border border-border bg-card p-4"
               >
-                <span className="display-num grid h-7 w-7 place-items-center rounded-full brand-gradient text-[12px] font-bold text-white">
+                <span className="display-num grid h-7 w-7 place-items-center rounded-full brand-panel text-[12px] font-bold text-brand-foreground">
                   {i + 1}
                 </span>
                 <div className="mt-3 text-[13.5px] font-semibold text-foreground">

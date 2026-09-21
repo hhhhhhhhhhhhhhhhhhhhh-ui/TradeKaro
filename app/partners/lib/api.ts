@@ -54,6 +54,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const pGet = <T>(path: string) => request<T>(path);
 export const pPost = <T>(path: string, body: unknown) =>
   request<T>(path, { method: "POST", body: JSON.stringify(body ?? {}) });
+export const pDelete = <T>(path: string) =>
+  request<T>(path, { method: "DELETE" });
 
 /** sha256 hex — the same shape the trader signup/login sends. */
 export async function sha256Hex(input: string): Promise<string> {

@@ -125,7 +125,7 @@ function PartnerLogin() {
       <header className="relative border-b border-border bg-card/60 backdrop-blur-xl">
         <div className="mx-auto flex max-w-[1120px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
           <Link href="/partners" className="flex items-center gap-2.5">
-            <span className="brand-gradient grid h-8 w-8 place-items-center rounded-xl text-[13px] font-black text-white">
+            <span className="brand-panel grid h-8 w-8 place-items-center rounded-xl text-[13px] font-black text-brand-foreground">
               TS
             </span>
             <span className="leading-none">

@@ -136,6 +136,10 @@ const PARTNER_PROTECTED = [
   "/partners/earnings",
   "/partners/payouts",
   "/partners/profile",
+  // Tracking holds a partner's own credentials. It is the one panel page where
+  // a mistake means somebody else's ad account, so it must never be reachable
+  // without a session.
+  "/partners/tracking",
 ];
 
 // Everything under /partners that is not in PARTNER_PROTECTED is public by

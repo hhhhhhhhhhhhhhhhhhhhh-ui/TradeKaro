@@ -163,10 +163,63 @@ if (custIds.length) {
     params: custIds,
     n: custIds.length,
   });
+
+  // Conversion events, and the delivery rows that point at them.
+  //
+  // These earn their place: a queued event is one Meta or Google would be told
+  // about, so a demo conversion left behind is not just untidy — it becomes an
+  // invented conversion in a live ad account the moment credentials are set up.
+  // Deliveries go first; they reference the event.
+  const evFilter = `SELECT event_id FROM conversion_events
+                     WHERE user_id IN (${marks(custIds.length)})
+                        OR affiliate_code IN (${marks(codes.length)})`;
+  const cd = countOf(
+    `SELECT COUNT(*) AS n FROM conversion_deliveries WHERE event_id IN (${evFilter})`,
+    [...custIds, ...codes],
+  );
+  plan.push({
+    label: "conversion_deliveries (demo)",
+    sql: `DELETE FROM conversion_deliveries WHERE event_id IN (${evFilter})`,
+    params: [...custIds, ...codes],
+    n: cd,
+  });
+  const ce = countOf(
+    `SELECT COUNT(*) AS n FROM conversion_events
+      WHERE user_id IN (${marks(custIds.length)})
+         OR affiliate_code IN (${marks(codes.length)})`,
+    [...custIds, ...codes],
+  );
+  plan.push({
+    label: "conversion_events (demo)",
+    sql: `DELETE FROM conversion_events
+           WHERE user_id IN (${marks(custIds.length)})
+              OR affiliate_code IN (${marks(codes.length)})`,
+    params: [...custIds, ...codes],
+    n: ce,
+  });
+
+  console.log(`  ${String(cd).padStart(5)}  conversion_deliveries (demo)`);
+  console.log(`  ${String(ce).padStart(5)}  conversion_events (demo)`);
   console.log(`  ${String(d).padStart(5)}  trade_deposits (demo customers)`);
   console.log(
     `  ${String(custIds.length).padStart(5)}  users (demo customers)`,
   );
+}
+
+// A partner's own credentials must not outlive the partner. `affiliates` is
+// deleted just below, so these have to go first or the reference dangles.
+{
+  const tp = countOf(
+    `SELECT COUNT(*) AS n FROM tracking_pixels WHERE affiliate_id IN (${marks(ids.length)})`,
+    ids,
+  );
+  plan.push({
+    label: "tracking_pixels (demo affiliate)",
+    sql: `DELETE FROM tracking_pixels WHERE affiliate_id IN (${marks(ids.length)})`,
+    params: ids,
+    n: tp,
+  });
+  console.log(`  ${String(tp).padStart(5)}  tracking_pixels (demo affiliate)`);
 }
 
 if (!YES) {

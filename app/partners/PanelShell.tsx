@@ -19,6 +19,7 @@ import {
   FiLogOut,
   FiPieChart,
   FiSettings,
+  FiTarget,
   FiUsers,
   FiCheck,
   FiX,
@@ -45,6 +46,12 @@ const nav = (size = 18): NavItem[] => [
     label: "Links",
     short: "Links",
     icon: <FiLink2 size={size} />,
+  },
+  {
+    href: "/partners/tracking",
+    label: "Tracking",
+    short: "Tracking",
+    icon: <FiTarget size={size} />,
   },
   {
     href: "/partners/stats",
@@ -120,7 +127,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
       className="group flex items-center gap-2.5"
       aria-label="TradeStox Partners"
     >
-      <span className="brand-gradient grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[13px] font-black text-white shadow-sm">
+      <span className="brand-panel grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[13px] font-black text-brand-foreground">
         TS
       </span>
       {!compact ? (
@@ -278,7 +285,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
             <button
               type="button"
               onClick={() => setSheet(true)}
-              className="pressable grid h-9 w-9 place-items-center rounded-full brand-gradient text-[12px] font-bold text-white"
+              className="pressable grid h-9 w-9 place-items-center rounded-full brand-panel text-[12px] font-bold text-brand-foreground"
               aria-label="Open account menu"
             >
               {(me?.affiliate.name || "P").slice(0, 1).toUpperCase()}
@@ -316,7 +323,7 @@ export default function PanelShell({ children }: { children: ReactNode }) {
                     <span
                       className={`grid h-12 w-12 -translate-y-3 place-items-center rounded-2xl shadow-lg transition-colors ${
                         active
-                          ? "brand-gradient text-white"
+                          ? "brand-panel text-brand-foreground"
                           : "bg-card text-brand ring-1 ring-brand/25"
                       }`}
                     >

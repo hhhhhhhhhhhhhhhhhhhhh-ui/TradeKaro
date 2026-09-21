@@ -1,15 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import type { Metadata } from "next";
 import {
   FiActivity,
   FiArrowRight,
-  FiBarChart2,
   FiCheckCircle,
+  FiLayers,
   FiShield,
-  FiSmartphone,
 } from "react-icons/fi";
 import { affiliateByCode, landingPage } from "@/app/lib/affiliates";
+import { pickSignals } from "@/app/lib/tracking";
+import {
+  consentRequiredForCountry,
+  countryFromHeaders,
+} from "@/app/lib/consent";
+import { publicPixelsForCode } from "@/app/lib/pixels";
+import ConsentGate from "@/app/components/consent/ConsentGate";
+import CtaTracker from "@/app/components/consent/CtaTracker";
 import TrackClick from "../TrackClick";
 
 // Affiliate landing page: /l/<slug>?ref=PT-XXXXXX&c=campaign
@@ -22,7 +30,14 @@ export const dynamic = "force-dynamic";
 
 type Props = {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ ref?: string; c?: string; preview?: string }>;
+  searchParams: Promise<{
+    ref?: string;
+    c?: string;
+    preview?: string;
+    // Ad click ids and utm params arrive as arbitrary strings. They are read
+    // through the allowlist in `lib/tracking.ts`, never used directly.
+    [key: string]: string | string[] | undefined;
+  }>;
 };
 
 export async function generateMetadata({
@@ -45,8 +60,22 @@ export async function generateMetadata({
 
 export default async function LandingPage({ params, searchParams }: Props) {
   const { slug } = await params;
-  const { ref = "", c = "", preview = "" } = await searchParams;
+  const sp = await searchParams;
+  const { ref = "", c = "", preview = "" } = sp;
   const isPreview = preview === "1" || preview === "true";
+
+  // Snapshot the ad click ids off the URL the visitor actually landed on. This
+  // is the only moment they exist — a later navigation drops them, and the
+  // pixels that will consume them do not exist yet. See `lib/tracking.ts`.
+  const signals = pickSignals(sp);
+
+  // Where the visitor is decides whether they are owed a cookie banner. Read on
+  // the server so the tag gate can be told the answer in the first render,
+  // rather than asking the browser and firing pixels while it waits.
+  // This page is already force-dynamic, so reading headers costs nothing extra.
+  const requiresConsent = consentRequiredForCountry(
+    countryFromHeaders(await headers()),
+  );
 
   const page = landingPage(slug);
   if (!page) notFound();
@@ -62,231 +91,226 @@ export default async function LandingPage({ params, searchParams }: Props) {
 
   return (
     <div className="min-h-dvh bg-background">
+      <ConsentGate
+        requiresConsent={requiresConsent}
+        partnerPixels={code ? publicPixelsForCode(code) : []}
+      />
+      <CtaTracker />
+
       {valid ? (
         <TrackClick
           code={code}
           slug={page.slug}
           campaign={campaign}
           preview={isPreview}
+          signals={signals}
         />
       ) : null}
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-3 px-4 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/90 backdrop-blur">
+        <div className="mx-auto flex max-w-lg items-center justify-between gap-3 px-4 py-2.5 sm:max-w-3xl sm:px-6">
           <div className="flex items-center gap-2.5">
-            <span className="brand-gradient grid h-8 w-8 place-items-center rounded-xl text-[13px] font-black text-white">
+            {/* .brand-panel, not .brand-gradient: the lime end of that gradient
+                sits under this white "TS" and measured 1.98:1. */}
+            <span className="brand-panel grid h-8 w-8 shrink-0 place-items-center rounded-xl text-[13px] font-black text-brand-foreground">
               TS
             </span>
-            <span className="leading-none">
-              <span className="block text-[13.5px] font-semibold tracking-tight text-foreground">
+            <span className="leading-tight">
+              <span className="block text-[14.5px] font-semibold tracking-tight text-foreground">
                 TradeStox
               </span>
-              <span className="mt-0.5 block text-[10px] font-semibold uppercase tracking-[0.18em] text-brand">
+              <span className="block text-[10.5px] text-muted-foreground">
                 {page.tags || "Indian markets"}
               </span>
             </span>
           </div>
           <Link
             href="/login"
-            className="pressable inline-flex h-9 items-center rounded-xl px-3 text-[12.5px] font-semibold text-muted-foreground hover:text-foreground"
+            className="pressable inline-flex min-h-[44px] items-center rounded-full border border-border px-4 text-[13px] font-medium text-foreground"
           >
             Sign in
           </Link>
         </div>
       </header>
 
-      {/* ── Hero ────────────────────────────────────────────────────────── */}
-      <section className="relative overflow-hidden">
-        <div className="pointer-events-none absolute -right-24 -top-28 h-[400px] w-[400px] rounded-full bg-brand/10 blur-3xl" />
-        <div className="pointer-events-none absolute -left-28 top-32 h-[280px] w-[280px] rounded-full bg-brand-lime/10 blur-3xl" />
-
-        <div className="relative mx-auto max-w-[1100px] px-4 pb-7 pt-7 sm:pt-11 lg:px-8 lg:pb-14 lg:pt-20">
-          <div className="eyebrow flex items-center gap-2">
+      {/* One narrow measure for the whole page.
+          On a 390px phone the constraint does nothing; on a desktop it is what
+          stops a mobile-first page stretching into a wall of 140-character
+          lines. Every section below therefore carries no horizontal padding of
+          its own — this supplies it, and the sections only divide. */}
+      <div className="mx-auto max-w-lg px-4 sm:max-w-3xl sm:px-6">
+        {/* ── Hero ────────────────────────────────────────────────────────── */}
+        <section className="pb-8 pt-7 sm:pb-12 sm:pt-14">
+          <div className="flex items-center gap-2">
             <span className="live-dot" />
-            {page.tags || "Live markets"}
+            <span className="text-[11px] text-muted-foreground">
+              {page.tags || "Live markets"}
+            </span>
           </div>
 
-          <h1 className="mt-3 max-w-[19ch] text-[30px] font-semibold leading-[1.08] tracking-tight text-foreground sm:max-w-[20ch] sm:text-[44px] lg:text-[56px]">
+          {/* display-num is the mono face: it gives the headline a terminal
+            character without a panel or a gradient to carry it. */}
+          <h1 className="display-num mt-4 text-[32px] leading-[1.08] text-foreground sm:text-5xl">
             {page.headline}
           </h1>
 
           {page.subheadline ? (
-            <p className="mt-3 max-w-[60ch] text-[14px] leading-relaxed text-muted-foreground sm:mt-4 sm:text-[16px]">
+            <p className="mt-3 max-w-md text-[14px] leading-relaxed text-muted-foreground sm:text-base">
               {page.subheadline}
             </p>
           ) : null}
 
           {page.offer ? (
-            <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-brand/30 bg-brand/8 px-3.5 py-1.5 text-[12px] font-semibold text-brand">
-              <FiCheckCircle size={14} />
-              {page.offer}
+            <div className="broker-card mt-5 inline-flex items-center gap-2 rounded-full px-3.5 py-1.5">
+              <span className="text-[12px] font-medium text-brand">
+                {page.offer}
+              </span>
             </div>
           ) : null}
 
-          {/* Full-width on a phone: thumbs, not cursors. A 44px minimum tap
-              target, one clear primary action, the secondary below it. */}
-          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
+          {/* Full-width on a phone: thumbs, not cursors. 52px tap targets, one
+            clear primary action, the secondary directly below it. */}
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
             <Link
               href={signupHref}
-              className="pressable btn-money inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold sm:h-12 sm:w-auto sm:text-[13.5px]"
+              className="pressable btn-money flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold sm:w-auto sm:px-8"
             >
               {page.cta}
               <FiArrowRight size={16} />
             </Link>
             <Link
               href="/login"
-              className="pressable inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-6 text-[13.5px] font-semibold text-foreground sm:h-12 sm:w-auto"
+              className="pressable flex h-[52px] w-full items-center justify-center rounded-2xl border border-border text-[14px] font-medium text-foreground sm:w-auto sm:px-8"
             >
               I already have an account
             </Link>
           </div>
+        </section>
 
-          <p className="mt-3 text-[11.5px] text-muted-foreground">
-            No account-opening charge. Practise with virtual funds before you
-            trade.
-          </p>
-        </div>
-      </section>
-
-      {/* ── This page's own selling points ──────────────────────────────────
-          Two columns on a phone, not one. A single column of four bullets is
-          a long grey wall on a 390px screen; tiles read as a feature set and
-          let the offers that matter sit above the fold. */}
-      {page.highlights.length ? (
-        <section className="border-y border-border bg-card/40">
-          <div className="mx-auto max-w-[1100px] px-4 py-6 lg:px-8 lg:py-10">
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+        {/* ── This page's own selling points ──────────────────────────────────
+          Two columns on a phone, not one: a single column of four bullets is a
+          long grey wall at 390px, and tiles read as a feature set instead. */}
+        {page.highlights.length ? (
+          <section className="border-t border-border py-7 sm:py-10">
+            <p className="eyebrow text-muted-foreground">Why traders switch</p>
+            <div className="mt-4 grid grid-cols-2 gap-3">
               {page.highlights.map((h) => (
-                <div
-                  key={h}
-                  className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3 sm:p-3.5"
-                >
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand/12 text-brand">
-                    <FiCheckCircle size={14} />
-                  </span>
-                  <span className="text-[12.5px] font-medium leading-snug text-foreground sm:text-[13px]">
+                <div key={h} className="broker-card rounded-2xl p-3.5">
+                  <FiCheckCircle className="h-4 w-4 text-brand" />
+                  <p className="mt-2 text-[13px] leading-snug text-foreground">
                     {h}
-                  </span>
+                  </p>
                 </div>
               ))}
             </div>
-          </div>
-        </section>
-      ) : null}
+          </section>
+        ) : null}
 
-      {/* ── Proof points ────────────────────────────────────────────────── */}
-      <section className="border-y border-border bg-card/40">
-        <div className="mx-auto grid max-w-[1100px] gap-3 px-4 py-9 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:px-8 lg:py-12">
-          {[
-            [
-              <FiBarChart2 key="1" size={18} />,
-              "Real charts, real depth",
-              "Candlesticks, indicators and an option chain that loads instantly — not a spreadsheet with colours.",
-            ],
-            [
-              <FiActivity key="2" size={18} />,
-              "NSE, BSE and MCX in one place",
-              "Equities, futures, options and commodities share one terminal and one watchlist.",
-            ],
-            [
-              <FiShield key="3" size={18} />,
-              "Money out to your own account",
-              "Withdrawals go only to the bank or UPI account registered in your name — never to a destination someone else added.",
-            ],
-          ].map(([icon, title, body]) => (
-            <div
-              key={String(title)}
-              className="rounded-2xl border border-border bg-card p-3.5 sm:p-4"
-            >
-              <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/10 text-brand">
+        {/* ── Proof points ────────────────────────────────────────────────── */}
+        <section className="border-t border-border py-7 sm:py-10">
+          <p className="eyebrow text-muted-foreground">
+            Built for the desk, not a demo
+          </p>
+          {/* Stacked, not a grid. Three cards across reads as a comparison
+            table at this width; one per row reads as an argument. */}
+          <div className="mt-4 flex flex-col gap-3">
+            {[
+              [
+                <FiActivity key="a" className="h-5 w-5 text-brand" />,
+                "Charts that hold up under pressure",
+                "Live depth, multi-timeframe candles and a payoff builder for options, all on one screen you can actually read on a phone.",
+              ],
+              [
+                <FiLayers key="b" className="h-5 w-5 text-brand" />,
+                "NSE, BSE and MCX in one terminal",
+                "One watchlist, one login, one order window across equities, futures, options and commodities. No app-switching mid-trade.",
+              ],
+              [
+                <FiShield key="c" className="h-5 w-5 text-brand" />,
+                "Your money, your name, your account",
+                "Withdrawals settle only to a bank or UPI account registered in your own name — no third-party payouts, no exceptions.",
+              ],
+            ].map(([icon, title, body]) => (
+              <div key={String(title)} className="broker-card rounded-2xl p-4">
                 {icon as React.ReactNode}
-              </span>
-              <div className="mt-2.5 text-[13px] font-semibold text-foreground sm:text-[13.5px]">
-                {title as string}
-              </div>
-              <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground sm:text-[12.5px]">
-                {body as string}
-              </p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── How it works ────────────────────────────────────────────────────
-          Three steps, because on a phone the visitor's real question is not
-          "what does it do" but "how much of my evening does this cost me". */}
-      <section className="mx-auto max-w-[1100px] px-4 py-10 lg:px-8 lg:py-14">
-        <h2 className="text-[20px] font-semibold tracking-tight text-foreground sm:text-[25px]">
-          Open and trading in three steps
-        </h2>
-        <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-4">
-          {[
-            [
-              "1",
-              "Create your account",
-              "Name, email, mobile number. About two minutes on a phone.",
-            ],
-            [
-              "2",
-              "Fund it your way",
-              "UPI or netbanking. Add money when you are ready — the practice book needs none.",
-            ],
-            [
-              "3",
-              "Trade the live market",
-              "NSE, BSE and MCX are live the moment you sign in. Start small, size up when it earns it.",
-            ],
-          ].map(([n, t, d]) => (
-            <div
-              key={n}
-              className="flex gap-3 rounded-2xl border border-border bg-card p-3.5 sm:p-4"
-            >
-              <span className="display-num grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand/12 text-[13px] font-bold text-brand">
-                {n}
-              </span>
-              <div>
-                <div className="text-[13px] font-semibold text-foreground sm:text-[13.5px]">
-                  {t}
-                </div>
-                <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground sm:text-[12.5px]">
-                  {d}
+                <p className="mt-2.5 text-[14px] font-semibold text-foreground">
+                  {title as string}
+                </p>
+                <p className="mt-1 text-[13px] leading-relaxed text-muted-foreground">
+                  {body as string}
                 </p>
               </div>
-            </div>
-          ))}
-        </div>
-      </section>
+            ))}
+          </div>
+        </section>
 
-      {/* ── Closing CTA ─────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1100px] px-4 pb-12 lg:px-8 lg:pb-14">
-        <div className="relative overflow-hidden broker-card p-5 sm:p-9">
-          <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-brand/12 blur-3xl" />
-          <div className="relative flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6">
-            <div className="max-w-[50ch]">
-              <div className="eyebrow">Two minutes to open</div>
-              <h2 className="mt-2 text-[21px] font-semibold tracking-tight text-foreground sm:text-[27px]">
-                Open your account and look around
-              </h2>
-              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground sm:text-[13.5px]">
-                Everything is visible before you commit a rupee. Markets are
-                live and the practice book is free.
-              </p>
-            </div>
+        {/* ── How it works ────────────────────────────────────────────────────
+          Three steps, because on a phone the visitor's real question is not
+          "what does it do" but "how much of my evening does this cost me". */}
+        <section className="border-t border-border py-7 sm:py-10">
+          <p className="eyebrow text-muted-foreground">
+            From signup to your first trade
+          </p>
+          <div className="mt-4 flex flex-col gap-3">
+            {[
+              [
+                "1",
+                "Create your account",
+                "Name, email, mobile number. About two minutes on a phone.",
+              ],
+              [
+                "2",
+                "Add funds",
+                "UPI or netbanking. Add money when you are ready — the practice book needs none.",
+              ],
+              [
+                "3",
+                "Place your first trade",
+                "Try it risk-free first in the practice book with virtual money and live prices, or go live.",
+              ],
+            ].map(([n, t, d]) => (
+              <div key={n} className="broker-card flex gap-3 rounded-2xl p-4">
+                <span className="display-num shrink-0 text-2xl text-brand">
+                  {n}
+                </span>
+                <div>
+                  <p className="text-[14px] font-semibold text-foreground">
+                    {t}
+                  </p>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-muted-foreground">
+                    {d}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Closing CTA ─────────────────────────────────────────────────── */}
+        <section className="border-t border-border py-8 sm:py-12">
+          <div className="broker-card rounded-2xl p-6 text-center sm:p-10">
+            <h2 className="text-[22px] font-semibold leading-snug text-foreground sm:text-3xl">
+              Your next trade is a tap away
+            </h2>
+            <p className="mt-2 text-[13px] text-muted-foreground sm:text-base">
+              Open the account, take the practice credit and place a trade.
+              Nothing here is hidden behind a deposit.
+            </p>
             <Link
               href={signupHref}
-              className="pressable btn-money inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold sm:h-12 sm:w-auto sm:text-[13.5px]"
+              className="pressable btn-money mt-6 inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold sm:w-auto sm:px-10"
             >
-              <FiSmartphone size={16} />
               {page.cta}
+              <FiArrowRight size={16} />
             </Link>
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
 
       {/* ── Footer ──────────────────────────────────────────────────────── */}
       <footer className="border-t border-border">
-        <div className="mx-auto max-w-[1100px] px-4 py-6 lg:px-8">
+        <div className="mx-auto max-w-lg px-4 py-6 sm:max-w-3xl sm:px-6">
           <p className="text-[11px] leading-relaxed text-muted-foreground">
             Investments and trading in securities and commodities carry risk of
             loss. Past performance is not indicative of future results. Please

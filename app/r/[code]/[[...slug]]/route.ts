@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { affiliateByCode, landingPage } from "@/app/lib/affiliates";
 import { publicBaseUrl } from "@/app/lib/requestProto";
+import { pickSignals } from "@/app/lib/tracking";
 
 // GET /r/<code>            → the default landing page
 // GET /r/<code>/<slug>     → a specific landing page
@@ -66,6 +67,26 @@ export async function GET(
   if (campaign) params.set("c", campaign);
   if (req.nextUrl.searchParams.get("preview") === "1")
     params.set("preview", "1");
+
+  // ── Ad click ids ────────────────────────────────────────────────────────
+  //
+  // Carried through, but only from an allowlist.
+  //
+  // This is the difference between the pixels working later and not existing at
+  // all. An ad platform appends its click identifier to whatever URL it was
+  // given, so when a partner runs a Meta ad against `/r/DEMO01?c=reel-aug` the
+  // `fbclid` arrives HERE — and this redirect used to drop it, because the query
+  // string is rebuilt from the database instead of echoed back from the request.
+  // The visitor then reached the landing page with the identifier already gone,
+  // and nothing downstream could ever match their signup to the ad that paid for
+  // them.
+  //
+  // Copying named keys only, rather than forwarding everything, keeps the
+  // guarantee the rebuild exists for: the destination host and path are still
+  // fixed constants, so no visitor-supplied value can steer the redirect and
+  // this cannot become an open redirect. Unknown params are still dropped.
+  for (const [k, v] of Object.entries(pickSignals(req.nextUrl.searchParams)))
+    params.set(k, v);
 
   const qs = params.toString();
   // The CONFIGURED public URL, never the request's own origin — behind the

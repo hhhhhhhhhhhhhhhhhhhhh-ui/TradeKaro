@@ -9,6 +9,7 @@ import Loading from "../components/Loading";
 import { sileo } from "sileo";
 import { FiAlertCircle, FiCheck, FiEye, FiEyeOff } from "react-icons/fi";
 import { isPhone, normalisePhone } from "../lib/phone";
+import { trackEvent } from "../lib/trackClient";
 
 const MIN_PW = 8;
 
@@ -143,14 +144,19 @@ export default function SignUpPage() {
     const uname = username.trim().toLowerCase();
 
     setLoading(true);
+    let signupEventId: string | undefined;
     try {
-      await axios.post(`${apiURL}/register`, {
+      const res = await axios.post(`${apiURL}/register`, {
         username: uname,
         email: mail,
         password: hashed,
         phone,
         ...(refCode ? { ref: refCode, campaign: refCampaign } : {}),
       });
+      // The server derives this from the user id, so the browser reports the
+      // same conversion under the same id and Meta/Google collapse the pair
+      // instead of counting two signups for one customer.
+      signupEventId = res?.data?.eventId;
     } catch (err: any) {
       setLoading(false);
       const status = err?.response?.status;
@@ -168,6 +174,11 @@ export default function SignUpPage() {
     // Registered. Sign them straight in instead of making them retype their
     // credentials on the login screen — that second step was the biggest
     // drop-off in the old flow.
+
+    // Reported even if the sign-in below fails: the account exists, which is
+    // what the event claims. Firing it after the redirect would lose it.
+    trackEvent("CompleteRegistration", { eventId: signupEventId });
+
     try {
       const login = await axios.post(`${apiURL}/login`, {
         username: uname,

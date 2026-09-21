@@ -1,4 +1,6 @@
 import { attributeDeposit } from "./affiliates";
+import { recordConversionEvent } from "./conversions";
+import { depositEventId } from "./trackingEvents";
 import { db } from "./db";
 
 // ── Deposits ────────────────────────────────────────────────────────────────
@@ -208,18 +210,48 @@ export function recordDeposit(input: {
   //
   // Wrapped on purpose: a partner-commission problem must never be able to roll
   // back or fail the customer's deposit. The money is already in.
+  let depositRowId = 0;
   try {
     const rid = db.prepare("SELECT last_insert_rowid() AS id").get() as
       | { id?: number }
       | undefined;
+    depositRowId = Number(rid?.id) || 0;
     attributeDeposit({
-      depositId: Number(rid?.id) || 0,
+      depositId: depositRowId,
       userId: key,
       amount,
       method: input.method,
     });
   } catch {
     /* never block a real deposit on affiliate bookkeeping */
+  }
+
+  // ── Conversion event ─────────────────────────────────────────────────────
+  //
+  // `Purchase` is the only event that both pays a partner and is worth bidding
+  // for, so it is the one the ad platforms most need and the one they are least
+  // able to see: gateway money arrives on a webhook, long after the browser that
+  // started the payment has gone. Recording it here means the event survives
+  // whether or not anyone was watching.
+  //
+  // The id is derived from the deposit row, so a webhook retry derives the same
+  // id and `conversion_events` refuses the duplicate instead of reporting a
+  // second purchase for one payment.
+  //
+  // Practice credit is not a purchase and is excluded, as are the non-money
+  // methods.
+  if (depositRowId > 0 && isRealDepositMethod(input.method)) {
+    try {
+      recordConversionEvent({
+        name: "Purchase",
+        eventId: depositEventId(depositRowId),
+        userId: key,
+        value: amount,
+        at: input.ts || Date.now(),
+      });
+    } catch {
+      /* never block a real deposit on marketing bookkeeping */
+    }
   }
 
   return { ok: true, total: total + amount, duplicate: false };

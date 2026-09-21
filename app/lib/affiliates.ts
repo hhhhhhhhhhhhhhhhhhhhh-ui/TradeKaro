@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "crypto";
 import { db } from "./db";
 import { hashPartnerPassword, newSalt } from "./affiliateAuth";
+import { serialiseSignals, type ClickSignals } from "./tracking";
 
 // ── Affiliate / partner domain ──────────────────────────────────────────────
 //
@@ -494,6 +495,8 @@ function deviceKey(ip: string, ua: string) {
 export type ClickResult = {
   recorded: boolean;
   unique: boolean;
+  /** Row id, so a later consent decision can be written onto the same click. */
+  id?: number;
   reason?: "preview" | "unknown_code" | "no_code";
 };
 
@@ -523,6 +526,21 @@ export function recordClick(input: {
   referer?: string;
   /** True when the visitor is the partner checking their own link. */
   preview?: boolean;
+  /**
+   * Ad click ids and campaign params captured at first touch. Opaque provider
+   * tokens: stored verbatim, never parsed. See `lib/tracking.ts`.
+   */
+  signals?: ClickSignals;
+  /**
+   * Where this click stands on cookie consent: `exempt` when the visitor's
+   * jurisdiction does not require a banner, null when they were asked and have
+   * not answered yet. `setClickConsent()` fills in the answer afterwards.
+   *
+   * Computed on the SERVER from the geolocation header, never taken from the
+   * request body — an endpoint anyone can POST to is not a source of truth
+   * about the law.
+   */
+  consent?: string | null;
 }): ClickResult {
   if (input.preview)
     return { recorded: false, unique: false, reason: "preview" };
@@ -558,23 +576,56 @@ export function recordClick(input: {
     unique = !seen;
   }
 
-  db.prepare(
-    `INSERT INTO affiliate_clicks
-       (code, ts, ip, ua, landing, campaign, referer, day, device, is_unique)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`,
-  ).run(
-    code,
-    ts,
-    ip,
-    ua,
-    String(input.landing || "").slice(0, 80),
-    String(input.campaign || "").slice(0, 80),
-    String(input.referer || "").slice(0, 300),
-    day,
-    device,
-    unique ? 1 : 0,
-  );
-  return { recorded: true, unique };
+  const inserted = db
+    .prepare(
+      `INSERT INTO affiliate_clicks
+       (code, ts, ip, ua, landing, campaign, referer, day, device, is_unique, signals, consent)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+    )
+    .run(
+      code,
+      ts,
+      ip,
+      ua,
+      String(input.landing || "").slice(0, 80),
+      String(input.campaign || "").slice(0, 80),
+      String(input.referer || "").slice(0, 300),
+      day,
+      device,
+      unique ? 1 : 0,
+      serialiseSignals(input.signals),
+      input.consent === "exempt" ? "exempt" : null,
+    );
+  return {
+    recorded: true,
+    unique,
+    id: Number(inserted.lastInsertRowid || 0) || undefined,
+  };
+}
+
+/**
+ * Write the visitor's answer onto the click it belongs to.
+ *
+ * The click is recorded the moment the page renders, which is BEFORE the banner
+ * has been answered — so at click time there is no decision to store. This is
+ * the second half: the banner calls it once the visitor chooses.
+ *
+ * Only ever fills a blank. A row already marked `exempt` stays exempt, and an
+ * existing answer is never overwritten, so a replayed request cannot flip a
+ * recorded refusal into permission.
+ */
+export function setClickConsent(
+  clickId: number,
+  decision: "granted" | "denied",
+): boolean {
+  if (!Number.isInteger(clickId) || clickId <= 0) return false;
+  const res = db
+    .prepare(
+      `UPDATE affiliate_clicks SET consent = ?
+        WHERE id = ? AND (consent IS NULL OR consent = '')`,
+    )
+    .run(decision, clickId);
+  return Number(res.changes || 0) > 0;
 }
 
 export type ClickSource = {
@@ -921,6 +972,15 @@ function affiliateUserId(raw: unknown) {
     .trim()
     .replace(/^u-/, "");
 }
+
+/**
+ * Exported so other modules can look a click up by its owner.
+ *
+ * `affiliate_clicks.user_id` stores the BARE id, not the `u-` form — that
+ * mismatch is the bug described above, and anything querying that column has to
+ * normalise the same way or it will match nothing and say so quietly.
+ */
+export { affiliateUserId };
 
 /**
  * Why an attribution was refused. Every one of these used to be a bare `null`,

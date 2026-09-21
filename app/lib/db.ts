@@ -14,7 +14,12 @@ const g = globalThis as any;
 // Bump whenever a table or index is added below. Next dev reuses the cached
 // handle across hot reloads, so the revision check re-applies this idempotent
 // DDL and new tables exist without restarting the server.
-const SCHEMA_REV = 14;
+const SCHEMA_REV = 20;
+
+// Bump whenever ANY landing-page copy in seedAffiliates() changes. This is what
+// makes new wording reach a database that already has the rows — `INSERT OR
+// IGNORE` alone only ever seeds a brand-new database.
+const LANDING_COPY_REV = 2;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -332,9 +337,135 @@ const SCHEMA = `
       /** 1 for the first click from this device on this day, else 0. */
       is_unique INTEGER NOT NULL DEFAULT 1,
       /** Set when this click turned into an account. */
-      user_id TEXT
+      user_id TEXT,
+      /**
+       * JSON bag of the ad click ids and campaign params captured at first
+       * touch — fbclid, gclid, wbraid, msclkid, utm_*. A bag rather than a
+       * column per provider because ad platforms keep inventing new identifiers
+       * (ttclid, twclid, li_fat_id…) and each one must not cost a migration.
+       * Written once, read once at Conversion-API dispatch time. If reporting
+       * ever needs to group by one, SQLite's json_extract covers it.
+       */
+      signals TEXT,
+      /**
+       * Where this visitor stands on cookie consent, from their jurisdiction:
+       * 'exempt' when no banner was owed, 'granted'/'denied' once they answered
+       * it, NULL when they were asked and have not chosen yet.
+       *
+       * Conversion API forwarding reads this. NULL must be treated as "may not
+       * forward" — an unanswered banner is not permission.
+       */
+      consent TEXT
     );
     CREATE INDEX IF NOT EXISTS ix_aff_clicks_code ON affiliate_clicks(code, ts);
+
+    -- Every conversion-grade event, recorded server-side before anything is
+    -- sent to an ad platform.
+    --
+    -- This is an OUTBOX, not a log. A row is written in the same moment as the
+    -- thing that happened (the account, the deposit), and Phase 4 dispatches it
+    -- to Meta and Google afterwards. Writing it first is what makes the
+    -- guarantee possible: if Meta is slow or down, the signup still succeeds and
+    -- the event is still delivered later. A fire-and-forget call to an ad
+    -- network would lose the event and there would be no record it existed.
+    --
+    -- event_id is derived from the domain entity (signup:<userId>,
+    -- deposit:<rowId>), never random, so the browser pixel and the server send
+    -- the SAME id and the platforms collapse them into one conversion. UNIQUE is
+    -- what makes a retried webhook or a refreshed page harmless.
+    --
+    -- NOTE: SQL comments here, not JS ones, and no backticks anywhere in this
+    -- literal — a backtick terminates the template and the error it produces
+    -- (TS1005, several lines away) points at the wrong place entirely.
+    CREATE TABLE IF NOT EXISTS conversion_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      -- Canonical name — see lib/trackingEvents.ts.
+      name TEXT NOT NULL,
+      user_id TEXT,
+      -- Copied from the bound click so the affiliate is not re-derived later.
+      affiliate_code TEXT,
+      -- affiliate_clicks.id — the click these were bought with.
+      click_id INTEGER,
+      value REAL,
+      currency TEXT,
+      -- granted | denied | exempt | unknown. NULL must be read as do-not-send.
+      consent TEXT,
+      -- GA4 will not attribute without a client_id.
+      ga_client_id TEXT,
+      -- The visitor's own ip and user agent at the moment of the event.
+      --
+      -- Meta matches better with them, and a conversion from organic traffic
+      -- has no affiliate click to borrow them from — which is most of them. Only
+      -- ever set from a request the visitor actually made: the ip on a payment
+      -- webhook is the GATEWAY's, and sending it would be worse than sending
+      -- nothing, because it would confidently match the wrong person.
+      client_ip TEXT,
+      client_ua TEXT,
+      occurred_at INTEGER NOT NULL,
+      created_at INTEGER NOT NULL,
+      -- Filled by the Phase 4 dispatcher. NULL means still owed.
+      dispatched_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS ix_conv_pending
+      ON conversion_events(dispatched_at, occurred_at);
+
+    -- One row per (event, provider): what has been sent where, and what is owed.
+    --
+    -- Split from conversion_events because the two providers fail
+    -- independently. Meta succeeding while GA4 retries is the normal case, and a
+    -- single status column on the event could only record one of them — so the
+    -- other would be either resent or silently dropped.
+    --
+    -- status: pending | sent | failed | skipped. failed and skipped are
+    -- terminal; skipped means we CHOSE not to send (no consent), which is a
+    -- different thing from being unable to and is worth telling apart when
+    -- someone asks why a conversion never showed up.
+    CREATE TABLE IF NOT EXISTS conversion_deliveries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      attempts INTEGER NOT NULL DEFAULT 0,
+      next_attempt_at INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      response TEXT,
+      created_at INTEGER NOT NULL,
+      delivered_at INTEGER,
+      UNIQUE(event_id, provider)
+    );
+    CREATE INDEX IF NOT EXISTS ix_deliv_due
+      ON conversion_deliveries(status, next_attempt_at);
+
+    -- A partner's own tracking pixels.
+    --
+    -- These belong to the PARTNER, not to us. They are a credential they handed
+    -- over so we can report conversions to their own ad account, and they are
+    -- encrypted at rest for that reason — see lib/pixelCrypto.ts.
+    --
+    -- pixel_id is rendered into a script tag on our origin and is therefore
+    -- attacker-controlled input. It is validated against a strict shape at the
+    -- only write path (lib/pixels.ts) and must never be stored, or emitted,
+    -- without that validation having run.
+    --
+    -- UNIQUE(affiliate_id, provider): one pixel per provider per partner. A
+    -- second Meta pixel would raise the question of which one gets the
+    -- conversion, and there is no good answer to that.
+    CREATE TABLE IF NOT EXISTS tracking_pixels (
+      id TEXT PRIMARY KEY,
+      affiliate_id TEXT NOT NULL REFERENCES affiliates(id) ON DELETE CASCADE,
+      provider TEXT NOT NULL,
+      pixel_id TEXT NOT NULL,
+      -- AES-256-GCM blob, or NULL for a browser-only pixel.
+      token_enc TEXT,
+      label TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(affiliate_id, provider)
+    );
+    CREATE INDEX IF NOT EXISTS ix_pixels_aff
+      ON tracking_pixels(affiliate_id, provider);
     -- NOTE: the (code, day, device) index is deliberately NOT created here.
     -- day and device are migration columns, so on a database that predates
     -- SCHEMA_REV 11 the CREATE TABLE above is a no-op and the columns do not
@@ -692,6 +823,53 @@ function ensureColumns(db: DatabaseSync) {
   if (!pageCols.has("highlights"))
     db.exec("ALTER TABLE landing_pages ADD COLUMN highlights TEXT");
 
+  // ── ad click ids on a click (SCHEMA_REV 15) ──
+  //
+  // Migration column, so it is added here rather than relied on from SCHEMA —
+  // on an existing database the CREATE TABLE above is a no-op and the column
+  // would never appear.
+  //
+  // Deliberately no index. Nothing queries by this column: it is written with
+  // the click and read back by the row's own primary key when a conversion is
+  // dispatched. An index here would be pure write cost on the hottest insert in
+  // the affiliate system.
+  //
+  // Re-read the column list rather than reusing `clickCols` from the SCHEMA_REV
+  // 11 block above: that snapshot was taken before this function's own ALTERs
+  // ran, so it is a stale view and reusing it would re-issue an ALTER every boot.
+  const adCols = new Set(
+    (db.prepare("PRAGMA table_info(affiliate_clicks)").all() as any[]).map(
+      (c) => String(c.name),
+    ),
+  );
+  if (!adCols.has("signals"))
+    db.exec("ALTER TABLE affiliate_clicks ADD COLUMN signals TEXT");
+
+  // ── consent per click (SCHEMA_REV 16) ──
+  //
+  // Same migration-column rule as above. No index: read back by primary key at
+  // conversion dispatch, never filtered on.
+  if (!adCols.has("consent"))
+    db.exec("ALTER TABLE affiliate_clicks ADD COLUMN consent TEXT");
+
+  // ── GA4 client id on a conversion event (SCHEMA_REV 18) ──
+  //
+  // Migration column, so it is added here rather than relied on from SCHEMA.
+  // GA4 will not attribute an event without a client_id, and a deposit arrives
+  // on a webhook with no browser attached, so this has to be captured at signup
+  // and carried.
+  const convCols = new Set(
+    (db.prepare("PRAGMA table_info(conversion_events)").all() as any[]).map(
+      (c) => String(c.name),
+    ),
+  );
+  if (!convCols.has("ga_client_id"))
+    db.exec("ALTER TABLE conversion_events ADD COLUMN ga_client_id TEXT");
+  if (!convCols.has("client_ip"))
+    db.exec("ALTER TABLE conversion_events ADD COLUMN client_ip TEXT");
+  if (!convCols.has("client_ua"))
+    db.exec("ALTER TABLE conversion_events ADD COLUMN client_ua TEXT");
+
   // A partner must never have two open payout requests at once. `requestPayout`
   // checks this in code, but a check-then-insert is not atomic: two requests
   // arriving together can both pass the check and both be written, letting the
@@ -829,10 +1007,10 @@ function seedAffiliates(db: DatabaseSync) {
     [
       "start",
       "Start Trading",
-      "Trade Indian markets with a real broker-grade terminal",
-      "Live NSE options, equities and MCX commodities in one clean, fast workspace.",
-      "Zero-cost account · Instant demo credit to practise with",
-      "Open free account",
+      "Stop watching the market. Start trading it.",
+      "Live NSE, BSE and MCX on one clean terminal. Open your account in about two minutes and place your first trade today.",
+      "Free practice credit on signup — trade before you fund",
+      "Start Trading Free",
       "NSE · BSE · MCX",
       JSON.stringify([
         "Up to 20× leverage on intraday",
@@ -844,28 +1022,28 @@ function seedAffiliates(db: DatabaseSync) {
     [
       "options",
       "Options Edge",
-      "An options desk that does not get in your way",
-      "Strategy builder, live Greeks, payoff charts and an option chain that loads instantly.",
-      "Practise with virtual funds before you risk a rupee",
-      "Start with options",
+      "Trade options with the whole picture in front of you",
+      "Live Greeks, payoff charts and an option chain that loads instantly. Stop guessing on expiry day — see the numbers before you click.",
+      "Rehearse the desk with virtual money first",
+      "Trade Options Now",
       "Options · F&O",
       JSON.stringify([
-        "Live option chain across expiries",
-        "Greeks and payoff charts on screen",
+        "Every expiry on one live chain",
+        "Greeks and payoffs on screen",
         "Up to 20× leverage on intraday",
-        "Practise the desk with virtual money",
+        "Rehearse it with virtual money",
       ]),
     ],
     [
       "commodities",
       "MCX Commodities",
-      "Gold, silver, crude — tracked the way professionals track them",
-      "Live MCX contracts, charting and margin calculators in the same terminal as your equities.",
+      "Gold, silver and crude — traded from the same terminal as your equities",
+      "Live MCX contracts, charting and margins sitting next to your equity positions. One account, one watchlist, no second platform to learn.",
       "One account for NSE and MCX",
-      "Explore commodities",
+      "Trade Commodities",
       "MCX · Commodities",
       JSON.stringify([
-        "Live MCX contracts — gold, silver, crude",
+        "Live gold, silver and crude contracts",
         "Up to 20× leverage on intraday",
         "Same terminal as your equities",
         "One account, no separate funding",
@@ -874,25 +1052,25 @@ function seedAffiliates(db: DatabaseSync) {
     [
       "instant-deposit",
       "Fund In Seconds",
-      "Fund your account in seconds, not days",
+      "Fund in seconds. Trade the same minute.",
       "Top up by UPI or netbanking and the balance is credited the moment the payment gateway confirms it. No approval queue, no emailing screenshots, no waiting on a support ticket.",
-      "Credited on gateway confirmation — never on a promise",
-      "Add funds and start trading",
+      "Credited the moment the gateway confirms",
+      "Fund & Start Trading",
       "UPI · Netbanking · Instant credit",
       JSON.stringify([
         "Top up by UPI or netbanking",
         "Balance updates the moment it clears",
-        "No queue and no approval wait",
+        "No approval queue, no waiting",
         "Every deposit on your own ledger",
       ]),
     ],
     [
       "fast-withdrawal",
-      "Fast Withdrawals",
-      "Take your money out without the runaround",
-      "Withdraw to the bank or UPI account in your own name, straight from your wallet. No support tickets, no phone calls, no one asking you to share a screenshot.",
+      "Money Out",
+      "Your money out, to your own account",
+      "Request a withdrawal from your wallet whenever you want. It goes only to the bank or UPI account in your own name — no tickets, no phone calls, no one asking for a screenshot.",
       "Paid only to an account in your own name",
-      "Withdraw on your terms",
+      "Start Trading",
       "Bank · UPI · Your own account",
       JSON.stringify([
         "Request a withdrawal any time",
@@ -904,10 +1082,10 @@ function seedAffiliates(db: DatabaseSync) {
     [
       "practice-first",
       "Practise First",
-      "Learn the terminal with virtual money before you risk a rupee",
+      "Learn the terminal with virtual money. Then trade for real.",
       "A full practice book with the same order tickets, the same charts and live market prices. Break things in there, not with your savings.",
-      "Free practice credit on signup — no deposit required",
-      "Open a practice account",
+      "Practice credit on signup — no deposit required",
+      "Start Practising Free",
       "Virtual funds · Live prices · No risk",
       JSON.stringify([
         "Same terminal, virtual money",
@@ -919,10 +1097,10 @@ function seedAffiliates(db: DatabaseSync) {
     [
       "weekly-expiry",
       "Weekly Expiries",
-      "Trade weekly expiries with the numbers in front of you",
+      "Walk into expiry day already decided",
       "Live Greeks, payoff charts and an option chain that moves with the market — so expiry day is a decision you made, not a guess you regret.",
-      "Option chain, Greeks and payoff on one screen",
-      "Open the options desk",
+      "Chain, Greeks and payoff on one screen",
+      "Trade This Expiry",
       "Weekly options · Greeks · Payoff",
       JSON.stringify([
         "Live option chain by expiry",
@@ -934,10 +1112,10 @@ function seedAffiliates(db: DatabaseSync) {
     [
       "intraday-desk",
       "Intraday Desk",
-      "A trading day that does not fight you",
-      "Fast order tickets, real market depth and charts that keep up. Built for people who are actually at the screen when the market moves.",
+      "Built for the people watching every tick",
+      "Fast order tickets, real market depth and charts that keep up. Designed for traders who are actually at the screen when the market moves.",
       "Order status you can read at a glance",
-      "Start your session",
+      "Start Trading Now",
       "Intraday · Equities · Futures",
       JSON.stringify([
         "Up to 20× leverage on intraday",
@@ -975,21 +1153,60 @@ function seedAffiliates(db: DatabaseSync) {
       now,
     );
 
-  // Refresh the seeded copy on a database that already has these pages.
+  // Re-apply the seeded copy when LANDING_COPY_REV moves.
   //
-  // `INSERT OR IGNORE` deliberately never updates an existing row, so a copy
-  // change would otherwise only ever reach a brand-new database — the live one
-  // would keep the old wording forever.
+  // `INSERT OR IGNORE` deliberately never updates an existing row, so without
+  // this a copy change would only ever reach a brand-new database and the live
+  // one would keep the old wording forever. This covers EVERY copy column, not
+  // just highlights — a CTA edit that silently fails to ship is the same as no
+  // edit at all.
   //
-  // Guarded on `updated_at = created_at`, which stays true only while nobody has
-  // edited the row. So this reaches untouched seed content and stops the moment
-  // an operator makes the copy their own.
-  const refreshCopy = db.prepare(
-    `UPDATE landing_pages SET highlights = ?, updated_at = ?
-      WHERE slug = ? AND updated_at = created_at`,
-  );
-  for (const [slug, , , , , , , highlights] of pages)
-    refreshCopy.run(highlights, now, slug);
+  // This was previously guarded on `updated_at = created_at`, on the theory that
+  // it would stop overwriting once an operator made the copy their own. That
+  // guard never worked. The first refresh wrote a `now` later than the row's
+  // created_at, so from the second boot onward the condition was permanently
+  // false and NO copy change ever shipped — the live CTA sat on "Start your
+  // session" while the seed said otherwise. Nothing in the app writes to
+  // landing_pages (every other reference is a SELECT), so there was nothing to
+  // protect anyway. A revision marker does the job properly, and an admin editor
+  // can clear or bump the same key if one is ever added.
+  const COPY_REV_KEY = "landing_copy_rev";
+  const storedRev =
+    (db.prepare("SELECT v FROM kv WHERE k = ?").get(COPY_REV_KEY) as any)?.v ??
+    null;
+
+  if (storedRev !== String(LANDING_COPY_REV)) {
+    const setCopy = db.prepare(
+      `UPDATE landing_pages
+          SET title = ?, headline = ?, subheadline = ?, offer = ?, cta = ?,
+              tags = ?, highlights = ?, updated_at = ?
+        WHERE slug = ?`,
+    );
+    for (const [
+      slug,
+      title,
+      headline,
+      subheadline,
+      offer,
+      cta,
+      tags,
+      highlights,
+    ] of pages)
+      setCopy.run(
+        title,
+        headline,
+        subheadline,
+        offer,
+        cta,
+        tags,
+        highlights,
+        now,
+        slug,
+      );
+    db.prepare(
+      "INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
+    ).run(COPY_REV_KEY, String(LANDING_COPY_REV));
+  }
 }
 
 // One-time rename of the original paper_* tables to trade_*. Idempotent: it
