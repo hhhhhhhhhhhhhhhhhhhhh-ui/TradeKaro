@@ -1131,7 +1131,7 @@ export default function AdminPage() {
                     icon={<FiCreditCard size={14} aria-hidden />}
                     sub={
                       Number(stats?.money?.practiceCredit) > 0
-                        ? `+ ${money(Number(stats.money.practiceCredit))} practice credit (not withdrawable)`
+                        ? `+ ${money(Number(stats.money.practiceCredit))} promotional credit (not withdrawable)`
                         : "Verified payments and operator credits"
                     }
                   />
@@ -1192,8 +1192,8 @@ export default function AdminPage() {
                 <Callout tone="info">
                   <strong>Deposits</strong> counts only money that actually
                   arrived — a verified gateway payment or a credit from you.
-                  Practice credits are excluded, because they were never paid in
-                  and cannot be withdrawn. <strong>Withdrawn</strong> counts
+                  Promotional credits are excluded, because they were never paid
+                  in and cannot be withdrawn. <strong>Withdrawn</strong> counts
                   money the gateway confirmed sent; approved and in-flight
                   requests are shown beneath it.{" "}
                   <strong>Balance with users</strong> is every wallet balance
@@ -1644,7 +1644,7 @@ export default function AdminPage() {
               />
               <Card title="Funds & limits" sub="Caps applied to every order.">
                 <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
-                  {num("Starting capital ₹", "trading.startCash")}
+                  {num("Opening balance ₹", "trading.startCash")}
                   {num("Max qty/order", "trading.maxQty")}
                   {num("Max positions", "trading.maxPositions")}
                   {num("Brokerage flat ₹", "trading.brokerageFlat")}
@@ -1683,10 +1683,10 @@ export default function AdminPage() {
                 <Callout tone="info">
                   On: a customer can buy 1 unit of gold (10 g) instead of a
                   whole 1 kg lot. A whole MCX gold lot is about ₹1.53 crore, so
-                  whole-lot-only puts most commodities out of reach on a
-                  practice balance. Off: the paper book mirrors the exchange
-                  exactly and accepts whole lots only. Fractions of a{" "}
-                  <em>unit</em> are always refused either way.
+                  whole-lot-only puts most commodities out of reach on a small
+                  starting balance. Off: orders mirror the exchange exactly and
+                  accept whole lots only. Fractions of a <em>unit</em> are
+                  always refused either way.
                 </Callout>
                 {action(
                   "Square off intraday legs now",

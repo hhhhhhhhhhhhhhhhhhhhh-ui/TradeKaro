@@ -90,7 +90,7 @@ export default function OpengraphImage() {
           }}
         />
         <div style={{ display: "flex", color: "#5f8b86", fontSize: 24 }}>
-          Live market data · Simulated execution · Real charts
+          Live market data · Real charts · One terminal
         </div>
       </div>
     </div>,

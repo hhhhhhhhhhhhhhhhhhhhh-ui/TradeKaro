@@ -231,7 +231,7 @@ export default function SignUpPage() {
           <ul className="mt-8 flex flex-col gap-3.5">
             {(
               [
-                ["₹1,00,000", "starting capital"],
+                ["2000+ scrips", "live NSE coverage"],
                 ["Up to 20x", "leverage on intraday positions"],
                 ["Live data", "real NSE prices and charts"],
               ] as const
@@ -266,7 +266,7 @@ export default function SignUpPage() {
               </span>
             </div>
             <p className="mt-2.5 text-[12.5px] text-muted-foreground">
-              ₹1,00,000 starting capital · up to 20x leverage · live NSE data
+              Up to 20x leverage · live NSE data · one terminal
             </p>
           </div>
 

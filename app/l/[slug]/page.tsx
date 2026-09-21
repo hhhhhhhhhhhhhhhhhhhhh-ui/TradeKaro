@@ -262,12 +262,12 @@ export default async function LandingPage({ params, searchParams }: Props) {
               [
                 "2",
                 "Add funds",
-                "UPI or netbanking. Add money when you are ready — the practice book needs none.",
+                "UPI or netbanking. Add money when you are ready to trade.",
               ],
               [
                 "3",
                 "Place your first trade",
-                "Try it risk-free first in the practice book with virtual money and live prices, or go live.",
+                "Place your first order at live prices and track it in real time.",
               ],
             ].map(([n, t, d]) => (
               <div key={n} className="broker-card flex gap-3 rounded-2xl p-4">
@@ -294,8 +294,8 @@ export default async function LandingPage({ params, searchParams }: Props) {
               Your next trade is a tap away
             </h2>
             <p className="mt-2 text-[13px] text-muted-foreground sm:text-base">
-              Open the account, take the practice credit and place a trade.
-              Nothing here is hidden behind a deposit.
+              Open the account and place your first trade. Nothing here is
+              hidden behind a deposit.
             </p>
             <Link
               href={signupHref}

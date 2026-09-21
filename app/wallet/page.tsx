@@ -433,7 +433,7 @@ export default function WalletPage() {
           ? "Credited by our team"
           : d.method === "gateway"
             ? "Paid online"
-            : "Practice credit (not withdrawable)",
+            : "Promotional credit (not withdrawable)",
     }));
     const wdr = (wd?.withdrawals || []).map((w) => ({
       key: `w${w.id}`,
@@ -558,8 +558,8 @@ export default function WalletPage() {
               <span className="display-num font-bold text-white">
                 {money(wd.practiceCredit)}
               </span>{" "}
-              of practice credit. It can be traded with, but it was never paid
-              in, so it cannot be withdrawn.
+              of promotional credit. It can be traded with, but it was never
+              paid in, so it cannot be withdrawn.
             </div>
           ) : null}
 

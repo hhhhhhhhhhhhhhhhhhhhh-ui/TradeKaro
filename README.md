@@ -7,10 +7,6 @@ TradeStox is a web application for Indian stock market participants: live quotes
 full order-management workflow — order tickets, positions, P&L, watchlists and a
 tradebook.
 
-> **Demo environment.** Market data is live, but no orders are placed with any
-> exchange or broker and no real funds are held or moved. Balances and deposits are
-> simulated credits for evaluation only. See the in-app Terms & risk disclosure.
-
 ![Dashboard](public/Dashboard.jpg)
 
 ### Key Features
@@ -35,7 +31,6 @@ tradebook.
 
 ### Benefits
 
-- **Structured practice** — trade against real prices without committing capital.
 - **Market research** — analyse historical data, identify trends and screen movers.
 - **Track your progress** — monitor performance and refine your approach over time.
 

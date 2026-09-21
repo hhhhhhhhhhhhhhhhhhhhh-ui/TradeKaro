@@ -191,7 +191,7 @@ export default function LedgerPage() {
                 <Link href="/portfolio" className="underline">
                   Portfolio
                 </Link>{" "}
-                or place a paper trade.
+                or place a trade.
               </div>
             ) : (
               <div className="border border-border bg-card mt-6">

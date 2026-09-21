@@ -178,8 +178,8 @@ export default function BuySellWatch(props: any) {
                 Sign in to trade
               </h2>
               <p className="text-sm text-foreground/60">
-                Create a free account to buy, sell, and track stocks with ₹2.5L
-                starting capital.
+                Create a free account to buy, sell and track stocks at live NSE
+                prices.
               </p>
             </div>
             <div className="flex flex-col gap-2">

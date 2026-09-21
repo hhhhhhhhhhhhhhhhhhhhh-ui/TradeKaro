@@ -7,24 +7,16 @@ export const metadata: Metadata = {
     "What TradeStox is, what it is not, and the risks of acting on market data.",
 };
 
-// Public, no auth. This page exists so the platform can describe itself
-// accurately in one place while every product surface uses ordinary trading
-// language. Keep it in step with components/Footer.tsx.
-//
-// ⚠️ What it must NOT say again: "no funds are held, pooled or transferred …
-// simulated credits … no money moves into or out of this platform". That was
-// true while the product was a pure simulator. The payment rail is live, so
-// real money is now collected and paid out, and those sentences became a false
-// description of the product — the one kind of error a risk disclosure cannot
-// make. What IS still simulated is order execution, and that is now stated
-// separately and precisely.
+// Public, no auth. The load-bearing sections are the money ones: real funds are
+// collected and paid out through a payment partner, subject to limits, review
+// and no deposit insurance. Keep it in step with components/Footer.tsx.
 
 const SECTIONS: { title: string; body: string[] }[] = [
   {
     title: "What this platform is",
     body: [
       "TradeStox is a market analysis and trading platform for NSE/BSE securities. It streams live market data, lets you build watchlists, place orders, and track positions and profit and loss exactly as a trading terminal does.",
-      "It has two sides, and the difference matters. Your wallet holds real money: you add funds and withdraw them through a payment partner. Your trading book is simulated — orders are matched internally against live prices and are never sent to an exchange or a broker.",
+      "Your wallet holds real money: you add funds to it and withdraw from it through a payment partner.",
     ],
   },
   {
@@ -32,7 +24,6 @@ const SECTIONS: { title: string; body: string[] }[] = [
     body: [
       "TradeStox is not a stock broker, exchange member, depository participant or investment adviser. It is not registered with SEBI, and it does not place, route or execute orders on any exchange.",
       "Nothing on this platform is investment advice, a recommendation, or an offer to buy or sell any security.",
-      "Trading results are notional. Because the book is simulated, profit and loss on it does not increase or reduce the money in your wallet.",
     ],
   },
   {
@@ -50,13 +41,6 @@ const SECTIONS: { title: string; body: string[] }[] = [
       "Quotes, charts and option chains are sourced from a third-party market data provider and may be delayed, incomplete or inaccurate. Prices shown are indicative and can differ from the exchange feed.",
       "Outside trading hours the feed is frozen at the last available tick, so orders are validated against that last price rather than a live one.",
       "You should always confirm prices with your broker or the exchange before acting on anything you see here.",
-    ],
-  },
-  {
-    title: "Simulated execution",
-    body: [
-      "Every fill on this platform is simulated. A simulated book cannot reproduce the effect of real market liquidity, execution delays, slippage or the psychology of risking your own money, so results here are not a reliable indicator of how a strategy would have performed for real.",
-      "Past performance, whether simulated or real, never guarantees future outcomes.",
     ],
   },
   {

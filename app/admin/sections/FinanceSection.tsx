@@ -346,12 +346,11 @@ export default function FinanceSection({
             />
           </div>
 
-          {/* This used to warn, when the rail was live, that the footer and
-              /terms said the opposite — "no real funds are held or moved". They
-              no longer do; both now describe real funds with simulated
-              execution. Leaving the warning up would have been a false alarm,
-              and a false alarm is worse than none: an operator who sees an
-              alarm that is not real stops reading the ones that are. */}
+          {/* This used to warn that the footer and /terms claimed "no real
+              funds are held or moved". They no longer carry that wording.
+              Leaving the warning up would have been a false alarm, and a false
+              alarm is worse than none: an operator who sees an alarm that is
+              not real stops reading the ones that are. */}
           {!st.enabled ? (
             <Callout tone="info">
               The rail is <strong>off</strong>. No gateway call is made, the
@@ -362,11 +361,11 @@ export default function FinanceSection({
           ) : (
             <Callout tone="info">
               The rail is <strong>live</strong> and this platform is taking real
-              money. The footer and <code>/terms</code> describe that accurately
-              — real funds in and out, simulated execution — so if the product
-              changes, change them in the same commit. Accepting real money is
-              regulated activity, and the licence position is a decision for the
-              business rather than something this page can check.
+              money. Accepting real money is regulated activity, and the licence
+              position is a decision for the business rather than something this
+              page can check. Keep the footer and <code>/terms</code> describing
+              what the product actually does, and change them in the same commit
+              as the code that changes it.
             </Callout>
           )}
 

@@ -68,7 +68,7 @@ export default function Home() {
           <div className="grid grid-cols-2 md:grid-cols-4 border-b border-l border-border">
             {[
               { value: "2000+", label: "NSE-LISTED SCRIPS" },
-              { value: "₹2.5L", label: "STARTING CAPITAL" },
+              { value: "UP TO 20X", label: "INTRADAY LEVERAGE" },
               { value: "1D·1W·1M·1Y", label: "CHART RANGES" },
               { value: "MIT", label: "LICENSE" },
             ].map((stat) => (
@@ -100,7 +100,7 @@ export default function Home() {
             <h2 className="text-3xl sm:text-4xl md:text-5xl font-bold tracking-tight mt-3 leading-tight">
               Real prices.
               <br />
-              Real charts. Real practice.
+              Real charts. Real tools.
             </h2>
           </div>
 
@@ -169,10 +169,10 @@ export default function Home() {
                   TRADING CAPITAL
                 </div>
                 <div className="font-mono text-lg sm:text-xl font-bold text-foreground mb-2">
-                  ₹1,00,000 starting capital
+                  Funded by you
                 </div>
                 <p className="text-xs text-foreground/50 leading-relaxed">
-                  Sign up to fund your account, place orders at live NSE prices,
+                  Add funds when you are ready, place orders at live NSE prices,
                   and track P&amp;L here.
                 </p>
               </div>
@@ -231,7 +231,7 @@ export default function Home() {
               {
                 n: "03",
                 title: "Place your first order",
-                sub: "Buy and sell with ₹2.5L starting capital. Watch your P&L move on live NSE prices.",
+                sub: "Buy and sell at live NSE prices. Watch your P&L move in real time.",
               },
             ].map((step) => (
               <div

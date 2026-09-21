@@ -19,7 +19,7 @@ const SCHEMA_REV = 20;
 // Bump whenever ANY landing-page copy in seedAffiliates() changes. This is what
 // makes new wording reach a database that already has the rows — `INSERT OR
 // IGNORE` alone only ever seeds a brand-new database.
-const LANDING_COPY_REV = 2;
+const LANDING_COPY_REV = 3;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -1009,13 +1009,13 @@ function seedAffiliates(db: DatabaseSync) {
       "Start Trading",
       "Stop watching the market. Start trading it.",
       "Live NSE, BSE and MCX on one clean terminal. Open your account in about two minutes and place your first trade today.",
-      "Free practice credit on signup — trade before you fund",
+      "One terminal for NSE, BSE and MCX",
       "Start Trading Free",
       "NSE · BSE · MCX",
       JSON.stringify([
         "Up to 20× leverage on intraday",
         "NSE, BSE and MCX in one watchlist",
-        "Free practice credit — no deposit needed",
+        "Fund by UPI or netbanking when you are ready",
         "Withdraw to your own bank or UPI",
       ]),
     ],
@@ -1024,14 +1024,14 @@ function seedAffiliates(db: DatabaseSync) {
       "Options Edge",
       "Trade options with the whole picture in front of you",
       "Live Greeks, payoff charts and an option chain that loads instantly. Stop guessing on expiry day — see the numbers before you click.",
-      "Rehearse the desk with virtual money first",
+      "Read every strike before you commit",
       "Trade Options Now",
       "Options · F&O",
       JSON.stringify([
         "Every expiry on one live chain",
         "Greeks and payoffs on screen",
         "Up to 20× leverage on intraday",
-        "Rehearse it with virtual money",
+        "Payoff chart before you commit",
       ]),
     ],
     [
@@ -1077,21 +1077,6 @@ function seedAffiliates(db: DatabaseSync) {
         "Paid to your own bank or UPI",
         "One clear status instead of chasing",
         "No support ticket to raise",
-      ]),
-    ],
-    [
-      "practice-first",
-      "Practise First",
-      "Learn the terminal with virtual money. Then trade for real.",
-      "A full practice book with the same order tickets, the same charts and live market prices. Break things in there, not with your savings.",
-      "Practice credit on signup — no deposit required",
-      "Start Practising Free",
-      "Virtual funds · Live prices · No risk",
-      JSON.stringify([
-        "Same terminal, virtual money",
-        "Live NSE and MCX prices throughout",
-        "Practice book kept apart from real funds",
-        "Nothing at stake while you learn",
       ]),
     ],
     [
@@ -1203,6 +1188,15 @@ function seedAffiliates(db: DatabaseSync) {
         now,
         slug,
       );
+    // `practice-first` was the one page built entirely around virtual money —
+    // headline, offer, CTA and every highlight. It is DELETED rather than
+    // restyled: nothing in it survives, and leaving the row unpublished would
+    // keep the old copy in the table for the next query to find. `INSERT OR
+    // IGNORE` cannot remove a row, so this has to be explicit.
+    db.prepare("DELETE FROM landing_pages WHERE slug = ?").run(
+      "practice-first",
+    );
+
     db.prepare(
       "INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v",
     ).run(COPY_REV_KEY, String(LANDING_COPY_REV));
