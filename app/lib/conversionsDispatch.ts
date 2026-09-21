@@ -29,7 +29,7 @@ import { affiliateUserId } from "./affiliates";
 import { PROVIDER_EVENT, type CanonicalEvent } from "./trackingEvents";
 import { parseSignals, fbcFromFbclid } from "./tracking";
 import { publicBaseUrl } from "./requestProto";
-import { sendConfigForCode } from "./pixels";
+import { enabledPartnerPixelCount, sendConfigForCode } from "./pixels";
 
 export type Provider = "meta" | "ga4" | "meta_affiliate";
 
@@ -359,7 +359,14 @@ export function enqueueDeliveries(eventId: string, now = Date.now()): number {
 /** Queue every recorded event that has no delivery row for a configured provider. */
 export function backfillDeliveries(limit = 500, now = Date.now()) {
   const providers = configuredProviders();
-  if (!providers.length) return { queued: 0, providers: [] as Provider[] };
+
+  // A partner-only configuration still has work to do. `enqueueDeliveries`
+  // decides per event whether a partner pixel applies, so the platform list
+  // being empty is not a reason to skip — it used to return early here, which
+  // meant a partner who added their pixel after the conversions had already been
+  // recorded never got them forwarded, however often backfill ran.
+  if (!providers.length && enabledPartnerPixelCount() === 0)
+    return { queued: 0, providers: [] as Provider[] };
 
   const events = db
     .prepare(
@@ -569,6 +576,23 @@ export async function dispatchPendingConversions(
       now - Number(row.occurred_at) > META_MAX_AGE_MS
     ) {
       close("skipped", "too_old_for_meta", undefined, 0, 0);
+      report.skipped++;
+      continue;
+    }
+
+    // ── the credential this row was queued under has gone ──
+    //
+    // A row is only ever created for a provider that was configured at the
+    // time, but credentials can later be removed — or simply never set on a
+    // host rebuilt from scratch. Sending anyway burns the attempt against a URL
+    // that cannot succeed, and `failed` is terminal, so the conversion is gone
+    // for good. Skipping keeps it recoverable: `?requeue=1` brings it back the
+    // moment the token returns. Nothing is lost by waiting.
+    if (
+      provider !== "meta_affiliate" &&
+      !report.configured.includes(provider)
+    ) {
+      close("skipped", "no_credentials", undefined, 0, 0);
       report.skipped++;
       continue;
     }

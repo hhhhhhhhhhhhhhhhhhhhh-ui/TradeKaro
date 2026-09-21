@@ -6,6 +6,7 @@ import {
   dispatchPendingConversions,
   requeueDeliveries,
 } from "@/app/lib/conversionsDispatch";
+import { enabledPartnerPixelCount } from "@/app/lib/pixels";
 
 // POST /api/track/dispatch — send what is owed to Meta and Google.
 //
@@ -74,6 +75,32 @@ export async function POST(req: NextRequest) {
   const dryRun = sp.get("dryRun") === "1";
   const limit = Number(sp.get("limit") || 25);
 
+  // An explicit operator action is honoured whatever the configuration says.
+  // `requeue` exists to undo a previous decision, and it was previously
+  // documented here but never actually wired up — the recovery path an operator
+  // would reach for after fixing a rotated token did nothing at all.
+  let requeued = 0;
+  if (sp.get("requeue") === "1") requeued = requeueDeliveries();
+
+  // Nothing to send and nothing that could be sent — answer without touching the
+  // queue. This cannot be `configuredProviders()` alone: a partner's pixel is a
+  // reason to run even when the platform has no pixel of its own, because their
+  // conversions still need forwarding.
+  //
+  // A timer calls this on a fixed schedule, so the idle case has to be the cheap
+  // one. Checking a count is a single indexed query; draining is not.
+  const configured = configuredProviders();
+  const partnerPixels = enabledPartnerPixelCount();
+  if (!configured.length && partnerPixels === 0) {
+    return NextResponse.json({
+      ok: true,
+      skipped: "nothing_configured",
+      configured,
+      partnerPixels,
+      requeued,
+    });
+  }
+
   let backfilled = 0;
   if (sp.get("backfill") === "1") backfilled = backfillDeliveries(500).queued;
 
@@ -82,5 +109,11 @@ export async function POST(req: NextRequest) {
     dryRun,
   });
 
-  return NextResponse.json({ ok: true, backfilled, ...report });
+  return NextResponse.json({
+    ok: true,
+    backfilled,
+    requeued,
+    partnerPixels,
+    ...report,
+  });
 }

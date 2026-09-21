@@ -10,6 +10,7 @@ import {
   configuredProviders,
   dispatchPendingConversions,
 } from "@/app/lib/conversionsDispatch";
+import { enabledPartnerPixelCount } from "@/app/lib/pixels";
 
 // POST /api/track/click
 //
@@ -59,27 +60,11 @@ export async function POST(req: NextRequest) {
   // `after()` runs once the response is already on its way, so no visitor ever
   // waits for Meta. Bounded to a handful so a large backlog cannot turn one page
   // view into a long-running job.
-  if (configuredProviders().length) {
-    after(async () => {
-      try {
-        await dispatchPendingConversions({ limit: 5 });
-      } catch {
-        /* a marketing send must never surface to a visitor */
-      }
-    });
-  }
-
-  // Opportunistic drain of the conversion queue.
   //
-  // Somewhere to hang this that costs nothing and needs no infrastructure: every
-  // landing visit is a chance to send what is owed, so the queue drains on a host
-  // where nobody ever set up a cron. A cron or systemd timer calling
-  // /api/track/dispatch is still the reliable path; this is the safety net.
-  //
-  // `after()` runs it once the response is already on its way, so no visitor
-  // ever waits for Meta. Bounded to a handful so a large backlog does not turn
-  // one page view into a long-running job.
-  if (configuredProviders().length) {
+  // The guard counts partner pixels too. Their conversions need forwarding even
+  // when the platform has no pixel of its own, and checking only the platform
+  // configuration meant this drain silently never ran for a partner-only setup.
+  if (configuredProviders().length || enabledPartnerPixelCount() > 0) {
     after(async () => {
       try {
         await dispatchPendingConversions({ limit: 5 });

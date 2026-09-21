@@ -123,6 +123,87 @@ sudo crontab -e
 Keep at least one copy **off the server** (rclone to object storage, or `scp` elsewhere).
 This database holds every account and the admin password hashes.
 
+## Conversion dispatch timer
+
+Conversions are queued in the database when they happen and sent later, so something has
+to drain the queue. That is `tradekaro-dispatch.timer`, and it is **not** installed by
+`setup-vps.sh` — it needs a secret that only exists once you have generated one.
+
+One timer serves the whole site. The queue is a single table holding every partner's owed
+conversions, so fifty partners with fifty pixels is still one timer.
+
+### Install
+
+Generate the shared secret. The app and the timer must agree on it or every run is a 401:
+
+```bash
+SECRET=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+echo "TRACKING_DISPATCH_SECRET=$SECRET" | sudo -u tradekaro tee -a /opt/tradekaro/.env.production
+```
+
+Install the units from the repo, so they are versioned rather than hand-typed on the host:
+
+```bash
+sudo install -m 644 /opt/tradekaro/deploy/tradekaro-dispatch.service /etc/systemd/system/
+sudo install -m 644 /opt/tradekaro/deploy/tradekaro-dispatch.timer   /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl restart tradekaro          # picks up the new secret
+sudo systemctl enable --now tradekaro-dispatch.timer
+```
+
+### Verify
+
+```bash
+systemctl list-timers tradekaro-dispatch.timer   # NEXT should be within 5 minutes
+sudo systemctl start tradekaro-dispatch.service  # run one now, without waiting
+systemctl status tradekaro-dispatch.service      # Active: inactive (dead) is SUCCESS for oneshot
+journalctl -u tradekaro-dispatch -n 20
+```
+
+A healthy idle run prints:
+
+```json
+{"ok":true,"skipped":"nothing_configured","configured":[],"partnerPixels":0,"requeued":0}
+```
+
+That means no platform pixel is configured and no partner has one either, so the endpoint
+returned without touching the queue. It is the normal state until you set tracking up, and
+it costs one indexed count — the timer is meant to run always rather than be switched on
+when a partner adds a pixel, because tying a schedule to database state means every
+failure mode is silent.
+
+Once a pixel exists the same call starts doing real work and reports something like
+`{"ok":true,"considered":3,"sent":3,...}`. Nothing about the timer changes; it simply
+stops short-circuiting. A partner saving a pixel also triggers a backfill immediately, so
+their already-recorded conversions are forwarded without waiting for the next tick.
+
+### If it 401s
+
+```bash
+journalctl -u tradekaro-dispatch -n 5     # look for "Unauthorized"
+```
+
+The secret in `/opt/tradekaro/.env.production` must match what the app sees. Two things
+that catch people out: the app reads that file at **startup**, so a new secret needs
+`systemctl restart tradekaro`; and systemd reads it for the *timer* separately, which is
+why the value lives in one file rather than being written into the unit.
+
+### Recovering terminal deliveries
+
+A conversion that failed five times is marked `failed` and stops being retried. After
+fixing the cause — a rotated token, a wrong pixel id — put them back in the queue:
+
+```bash
+sudo -u tradekaro bash -c 'set -a; . /opt/tradekaro/.env.production; set +a
+curl -fsS -X POST -H "x-dispatch-secret: $TRACKING_DISPATCH_SECRET" \
+  "http://127.0.0.1:3000/api/track/dispatch?requeue=1"'
+
+# see what is owed, by provider and status
+sudo -u tradekaro bash -c 'set -a; . /opt/tradekaro/.env.production; set +a
+curl -fsS -H "x-dispatch-secret: $TRACKING_DISPATCH_SECRET" \
+  "http://127.0.0.1:3000/api/track/dispatch"'
+```
+
 ## Troubleshooting
 
 | Symptom                             | Cause                                                                                                                        |
@@ -134,3 +215,6 @@ This database holds every account and the admin password hashes.
 | All users logged out after a deploy | `AUTH_SECRET` changed. That is expected — it signs the session cookies.                                                      |
 | Every account gone after a deploy   | `data/` was not preserved. It must stay outside the repo, on a path that survives deploys.                                   |
 | Squares-off never run               | The process must stay up. `Restart=always` is already set; check the service is not being OOM-killed.                        |
+| Conversions never leave the server  | No dispatch timer. `systemctl list-timers tradekaro-dispatch.timer` — nothing listed means it was never enabled.             |
+| The timer fires but always 401s     | `TRACKING_DISPATCH_SECRET` is missing or the app has not been restarted since it was added. See "If it 401s" above.         |
+| Unit file edited but nothing changed | systemd reads these into memory. `systemctl daemon-reload` after editing, and re-`install` after pulling a new version.      |

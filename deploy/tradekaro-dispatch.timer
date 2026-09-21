@@ -1,0 +1,43 @@
+[Unit]
+Description=TradeStox — dispatch conversions every 5 minutes
+
+# ONE TIMER FOR THE WHOLE SITE, NOT ONE PER PARTNER.
+#
+# The queue is global — `conversion_deliveries` holds every partner's owed
+# conversions in one table — so one drainer serves all of them. Fifty partners
+# with fifty pixels is still one timer; fifty timers would be fifty identical
+# queries racing each other over the same rows for no benefit.
+#
+# Nor does this get enabled only once a partner has added a pixel. That would
+# mean writing database state into the scheduler, and every question it raises is
+# worse than the one it answers: what turns it back off when the pixel is
+# deleted; what happens when the platform pixel is configured but no partner has
+# one; what if the enable step fails and nothing notices. The endpoint instead
+# answers "nothing configured" and returns without touching the queue, which
+# costs one indexed count. An always-on timer that usually does nothing is
+# simpler to reason about than one whose existence depends on a row somewhere.
+
+[Timer]
+# Two minutes after boot rather than immediately: the app is still starting and
+# would refuse the connection.
+OnBootSec=2min
+
+# Five minutes is the right order of magnitude. Conversions are sent for ad
+# attribution, not for anything a person is waiting on, and a short delay costs
+# nothing — Meta accepts events up to seven days old. Shorter would be mostly
+# pointless wakeups; longer would start to show as lag in the reports.
+OnUnitActiveSec=5min
+
+# If the host was suspended or the timer missed a slot, run once on resume rather
+# than skipping. Missing a run is harmless (the next one catches up) but there is
+# no reason to.
+Persistent=true
+
+# Do not let runs pile up if one somehow hangs. The service caps its own request
+# at 120s, so a second run starting 5 minutes later cannot overlap in practice.
+AccuracySec=30s
+
+Unit=tradekaro-dispatch.service
+
+[Install]
+WantedBy=timers.target

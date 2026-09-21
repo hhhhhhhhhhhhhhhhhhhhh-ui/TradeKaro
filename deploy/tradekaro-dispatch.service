@@ -1,0 +1,41 @@
+[Unit]
+Description=TradeStox — drain the conversion delivery queue
+Documentation=file:///opt/tradekaro/deploy/README.md
+
+# The app has to be up before there is anything to call. `Wants` rather than
+# `Requires`: if the app is down this should fail quietly and be tried again by
+# the timer, not be a hard dependency that can cascade.
+After=tradekaro.service
+Wants=tradekaro.service
+
+[Service]
+Type=oneshot
+
+# The secret lives in the app's own environment file, so there is exactly one
+# copy of it and no risk of the value drifting between here and the app. Note
+# that systemd reads this file itself — it does NOT inherit the units' variables
+# from the app's process.
+EnvironmentFile=/opt/tradekaro/.env.production
+
+# `-f` makes curl exit non-zero on an HTTP error, so a 401 or a 500 shows up as
+# a failed unit in `systemctl status` instead of a silent success. `-sS` hides
+# the progress meter but still prints the error.
+#
+# 127.0.0.1 and not the public hostname: this must not travel out through
+# Cloudflare and back, where it would be rate-limited, logged, and would fail
+# whenever DNS or the CDN had a bad minute.
+ExecStart=/usr/bin/curl -fsS -X POST \
+  --max-time 120 \
+  -H "x-dispatch-secret: ${TRACKING_DISPATCH_SECRET}" \
+  "http://127.0.0.1:3000/api/track/dispatch?limit=100"
+
+# No shell, no filesystem writes, no new privileges. This job's only power is
+# making one HTTP request, so it is given nothing else.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+CapabilityBoundingSet=

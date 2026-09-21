@@ -173,6 +173,20 @@ export function publicPixelsForCode(code: string): Array<{
   }));
 }
 
+/**
+ * How many partners currently have an enabled pixel on file.
+ *
+ * Used to answer "is there any reason to send anything at all?" without walking
+ * the queue. A partner's pixel is a reason to run even when the platform has no
+ * pixel of its own — their conversions still need forwarding.
+ */
+export function enabledPartnerPixelCount(): number {
+  const row = db
+    .prepare(`SELECT COUNT(*) AS n FROM tracking_pixels WHERE enabled = 1`)
+    .get() as { n?: number } | undefined;
+  return Number(row?.n || 0);
+}
+
 /** Everything the dispatcher needs to send on a partner's behalf. */
 export function sendConfigForCode(code: string | null | undefined): {
   pixelId: string;

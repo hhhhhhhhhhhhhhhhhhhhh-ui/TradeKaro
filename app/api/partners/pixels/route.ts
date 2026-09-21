@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { needPartner } from "../_guard";
 import {
   deletePixel,
@@ -8,7 +8,9 @@ import {
 } from "@/app/lib/pixels";
 import { encryptionAvailable } from "@/app/lib/pixelCrypto";
 import {
+  backfillDeliveries,
   buildMetaPayload,
+  dispatchPendingConversions,
   providerConfig,
 } from "@/app/lib/conversionsDispatch";
 
@@ -105,6 +107,25 @@ export async function POST(req: NextRequest) {
       { ok: false, error: res.error },
       { status: res.status },
     );
+
+  // A partner who has just added a pixel usually has conversions already on
+  // record that were never queued for them. `enqueueDeliveries` only opens a row
+  // for a destination that can actually be reached, so at the time those events
+  // happened there was nothing to send to and no row was created. Backfill and
+  // drain here rather than waiting for the timer, so tracking starts from the
+  // moment they add the pixel instead of up to five minutes later.
+  //
+  // `after()` keeps this off the response — saving a pixel should not wait on
+  // Meta. Failures are swallowed: the save already succeeded, and the timer is
+  // the reliable path. This is only a head start.
+  after(async () => {
+    try {
+      backfillDeliveries(500);
+      await dispatchPendingConversions({ limit: 25 });
+    } catch {
+      /* the timer will pick the queue up regardless */
+    }
+  });
 
   return NextResponse.json({ ok: true, pixel: res.pixel });
 }
