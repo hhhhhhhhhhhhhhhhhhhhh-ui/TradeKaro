@@ -2689,42 +2689,56 @@ export type LandingPage = {
   offer: string;
   cta: string;
   tags: string;
+  /** Short selling points for this page, rendered as a ticked strip. */
+  highlights: string[];
 };
+
+/**
+ * Parse the stored highlights. Never throws: a malformed value in the database
+ * must not take a live landing page down, it should just render without the
+ * strip. Capped at 6 — more than that stops being a summary.
+ */
+function parseHighlights(raw: unknown): string[] {
+  try {
+    const v = JSON.parse(String(raw ?? "[]"));
+    if (!Array.isArray(v)) return [];
+    return v
+      .map((x) => String(x || "").trim())
+      .filter(Boolean)
+      .slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+const shapePage = (r: any): LandingPage => ({
+  slug: str(r.slug),
+  title: str(r.title),
+  headline: str(r.headline),
+  subheadline: str(r.subheadline),
+  offer: str(r.offer),
+  cta: str(r.cta, "Open free account"),
+  tags: str(r.tags),
+  highlights: parseHighlights(r.highlights),
+});
 
 export function landingPages(onlyPublished = true): LandingPage[] {
   const rows = db
     .prepare(
-      `SELECT slug, title, headline, subheadline, offer, cta, tags
+      `SELECT slug, title, headline, subheadline, offer, cta, tags, highlights
          FROM landing_pages ${onlyPublished ? "WHERE published = 1" : ""}
         ORDER BY created_at ASC`,
     )
     .all() as any[];
-  return rows.map((r) => ({
-    slug: str(r.slug),
-    title: str(r.title),
-    headline: str(r.headline),
-    subheadline: str(r.subheadline),
-    offer: str(r.offer),
-    cta: str(r.cta, "Open free account"),
-    tags: str(r.tags),
-  }));
+  return rows.map(shapePage);
 }
 
 export function landingPage(slug: string): LandingPage | null {
   const r = db
     .prepare(
-      `SELECT slug, title, headline, subheadline, offer, cta, tags
+      `SELECT slug, title, headline, subheadline, offer, cta, tags, highlights
          FROM landing_pages WHERE slug = ? AND published = 1`,
     )
     .get(String(slug)) as any;
-  if (!r) return null;
-  return {
-    slug: str(r.slug),
-    title: str(r.title),
-    headline: str(r.headline),
-    subheadline: str(r.subheadline),
-    offer: str(r.offer),
-    cta: str(r.cta, "Open free account"),
-    tags: str(r.tags),
-  };
+  return r ? shapePage(r) : null;
 }

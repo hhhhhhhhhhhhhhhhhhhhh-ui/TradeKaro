@@ -147,6 +147,30 @@ export default async function LandingPage({ params, searchParams }: Props) {
         </div>
       </section>
 
+      {/* ── Highlights ──────────────────────────────────────────────────────
+          This page's own selling points, from the database. They used to be
+          absent entirely, so eight different landing pages showed the same
+          three generic product cards and read identically to a visitor who had
+          arrived from two different campaigns. */}
+      {page.highlights.length ? (
+        <section className="border-y border-border bg-card/40">
+          <div className="mx-auto max-w-[1100px] px-4 py-8 lg:px-8 lg:py-10">
+            <div className="grid gap-x-6 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-4">
+              {page.highlights.map((h) => (
+                <div key={h} className="flex items-start gap-2.5">
+                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand/12 text-brand">
+                    <FiCheckCircle size={12} />
+                  </span>
+                  <span className="text-[13px] font-medium leading-snug text-foreground">
+                    {h}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       {/* ── Proof points ────────────────────────────────────────────────── */}
       <section className="border-y border-border bg-card/40">
         <div className="mx-auto grid max-w-[1100px] gap-4 px-4 py-12 sm:grid-cols-2 lg:grid-cols-3 lg:px-8">

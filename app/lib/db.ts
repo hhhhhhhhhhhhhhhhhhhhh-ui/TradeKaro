@@ -14,7 +14,7 @@ const g = globalThis as any;
 // Bump whenever a table or index is added below. Next dev reuses the cached
 // handle across hot reloads, so the revision check re-applies this idempotent
 // DDL and new tables exist without restarting the server.
-const SCHEMA_REV = 13;
+const SCHEMA_REV = 14;
 
 const SCHEMA = `
     CREATE TABLE IF NOT EXISTS kv (
@@ -525,6 +525,15 @@ const SCHEMA = `
       cta TEXT,
       /** Which markets this page points at, e.g. "NSE · Options · Commodities" */
       tags TEXT,
+      /**
+       * JSON array of short selling points, e.g. ["Instant UPI top-up", ...].
+       *
+       * The page used to show the same three hardcoded product cards whatever
+       * campaign the visitor arrived from, which made eight different landing
+       * pages read identically. These are per-page and per-offer, rendered as a
+       * ticked strip under the hero.
+       */
+      highlights TEXT,
       published INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -672,6 +681,60 @@ function ensureColumns(db: DatabaseSync) {
   dropIfPresent("affiliates", "cpa_amount");
   dropIfPresent("affiliate_plans", "cpa_amount");
 
+  // ── landing page highlights (SCHEMA_REV 14) ──
+  //
+  // Migration column, so it is added here rather than relied on from SCHEMA.
+  const pageCols = new Set(
+    (db.prepare("PRAGMA table_info(landing_pages)").all() as any[]).map((c) =>
+      String(c.name),
+    ),
+  );
+  if (!pageCols.has("highlights"))
+    db.exec("ALTER TABLE landing_pages ADD COLUMN highlights TEXT");
+
+  // The three original landing pages predate that column, and the seeder uses
+  // INSERT OR IGNORE so it will never update a row that already exists — they
+  // would render without the highlights strip on every existing database,
+  // including the live one. Fill them here instead.
+  //
+  // Guarded on NULL/empty so it runs once and never overwrites copy an operator
+  // has since edited through the console.
+  const pageBackfill: [string, string[]][] = [
+    [
+      "start",
+      [
+        "NSE, BSE and MCX in one watchlist",
+        "Live prices, depth and candlesticks",
+        "Free practice credit — no deposit needed",
+        "Withdrawals to your own bank or UPI",
+      ],
+    ],
+    [
+      "options",
+      [
+        "Live option chain across expiries",
+        "Greeks and payoff charts on screen",
+        "Strategy builder before you commit",
+        "Practise the desk with virtual money",
+      ],
+    ],
+    [
+      "commodities",
+      [
+        "Live MCX contracts",
+        "Same terminal as your equities",
+        "Charting and margin calculators",
+        "One account, no separate funding",
+      ],
+    ],
+  ];
+  const setHighlights = db.prepare(
+    `UPDATE landing_pages SET highlights = ?
+      WHERE slug = ? AND (highlights IS NULL OR highlights = '')`,
+  );
+  for (const [slug, hs] of pageBackfill)
+    setHighlights.run(JSON.stringify(hs), slug);
+
   // A partner must never have two open payout requests at once. `requestPayout`
   // checks this in code, but a check-then-insert is not atomic: two requests
   // arriving together can both pass the check and both be written, letting the
@@ -796,7 +859,16 @@ function seedAffiliates(db: DatabaseSync) {
   for (const [id, name, model, dr, rr, hold, min] of plans)
     stmt.run(id, name, model, dr, rr, hold, min, now);
 
-  const pages: [string, string, string, string, string, string, string][] = [
+  const pages: [
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+    string,
+  ][] = [
     [
       "start",
       "Start Trading",
@@ -805,6 +877,12 @@ function seedAffiliates(db: DatabaseSync) {
       "Zero-cost account · Instant demo credit to practise with",
       "Open free account",
       "NSE · BSE · MCX",
+      JSON.stringify([
+        "NSE, BSE and MCX in one watchlist",
+        "Live prices, depth and candlesticks",
+        "Free practice credit — no deposit needed",
+        "Withdrawals to your own bank or UPI",
+      ]),
     ],
     [
       "options",
@@ -814,6 +892,12 @@ function seedAffiliates(db: DatabaseSync) {
       "Practise with virtual funds before you risk a rupee",
       "Start with options",
       "Options · F&O",
+      JSON.stringify([
+        "Live option chain across expiries",
+        "Greeks and payoff charts on screen",
+        "Strategy builder before you commit",
+        "Practise the desk with virtual money",
+      ]),
     ],
     [
       "commodities",
@@ -823,14 +907,104 @@ function seedAffiliates(db: DatabaseSync) {
       "One account for NSE and MCX",
       "Explore commodities",
       "MCX · Commodities",
+      JSON.stringify([
+        "Live MCX contracts",
+        "Same terminal as your equities",
+        "Charting and margin calculators",
+        "One account, no separate funding",
+      ]),
+    ],
+    [
+      "instant-deposit",
+      "Fund In Seconds",
+      "Fund your account in seconds, not days",
+      "Top up by UPI or netbanking and the balance is credited the moment the payment gateway confirms it. No approval queue, no emailing screenshots, no waiting on a support ticket.",
+      "Credited on gateway confirmation — never on a promise",
+      "Add funds and start trading",
+      "UPI · Netbanking · Instant credit",
+      JSON.stringify([
+        "Top up by UPI or netbanking",
+        "Balance updates the moment it clears",
+        "Every deposit on your own ledger",
+        "No queue and no approval wait",
+      ]),
+    ],
+    [
+      "fast-withdrawal",
+      "Fast Withdrawals",
+      "Take your money out without the runaround",
+      "Withdraw to the bank or UPI account in your own name, straight from your wallet. No support tickets, no phone calls, no one asking you to share a screenshot.",
+      "Paid only to an account in your own name",
+      "Withdraw on your terms",
+      "Bank · UPI · Your own account",
+      JSON.stringify([
+        "Request a withdrawal from your wallet",
+        "Paid to your registered bank or UPI",
+        "Still tied to your real wallet balance",
+        "One clear status instead of chasing",
+      ]),
+    ],
+    [
+      "practice-first",
+      "Practise First",
+      "Learn the terminal with virtual money before you risk a rupee",
+      "A full practice book with the same order tickets, the same charts and live market prices. Break things in there, not with your savings.",
+      "Free practice credit on signup — no deposit required",
+      "Open a practice account",
+      "Virtual funds · Live prices · No risk",
+      JSON.stringify([
+        "Same terminal, virtual money",
+        "Live NSE and MCX prices throughout",
+        "Practice book kept apart from real funds",
+        "Nothing at stake while you learn",
+      ]),
+    ],
+    [
+      "weekly-expiry",
+      "Weekly Expiries",
+      "Trade weekly expiries with the numbers in front of you",
+      "Live Greeks, payoff charts and an option chain that moves with the market — so expiry day is a decision you made, not a guess you regret.",
+      "Option chain, Greeks and payoff on one screen",
+      "Open the options desk",
+      "Weekly options · Greeks · Payoff",
+      JSON.stringify([
+        "Live option chain by expiry",
+        "Greeks that move with the market",
+        "Payoff chart before you commit",
+        "NSE weekly contracts",
+      ]),
+    ],
+    [
+      "intraday-desk",
+      "Intraday Desk",
+      "A trading day that does not fight you",
+      "Fast order tickets, real market depth and charts that keep up. Built for people who are actually at the screen when the market moves.",
+      "Order status you can read at a glance",
+      "Start your session",
+      "Intraday · Equities · Futures",
+      JSON.stringify([
+        "One watchlist across NSE, BSE and MCX",
+        "Live depth and candlesticks",
+        "Order status without digging",
+        "Intraday square-off handled for you",
+      ]),
     ],
   ];
   const pageStmt = db.prepare(
     `INSERT OR IGNORE INTO landing_pages
-       (slug, title, headline, subheadline, offer, cta, tags, published, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+       (slug, title, headline, subheadline, offer, cta, tags, highlights, published, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
   );
-  for (const [slug, title, headline, subheadline, offer, cta, tags] of pages)
+  for (const [
+    slug,
+    title,
+    headline,
+    subheadline,
+    offer,
+    cta,
+    tags,
+    highlights,
+  ] of pages)
     pageStmt.run(
       slug,
       title,
@@ -839,6 +1013,7 @@ function seedAffiliates(db: DatabaseSync) {
       offer,
       cta,
       tags,
+      highlights,
       now,
       now,
     );
