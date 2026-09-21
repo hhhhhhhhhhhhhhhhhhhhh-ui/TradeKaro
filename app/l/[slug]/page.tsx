@@ -72,8 +72,8 @@ export default async function LandingPage({ params, searchParams }: Props) {
       ) : null}
 
       {/* ── Header ──────────────────────────────────────────────────────── */}
-      <header className="border-b border-border bg-card/60 backdrop-blur-xl">
-        <div className="mx-auto flex max-w-[1100px] items-center justify-between gap-3 px-4 py-3 lg:px-8">
+      <header className="sticky top-0 z-40 border-b border-border bg-background/85 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-[1100px] items-center justify-between gap-3 px-4 lg:px-8">
           <div className="flex items-center gap-2.5">
             <span className="brand-gradient grid h-8 w-8 place-items-center rounded-xl text-[13px] font-black text-white">
               TS
@@ -101,18 +101,18 @@ export default async function LandingPage({ params, searchParams }: Props) {
         <div className="pointer-events-none absolute -right-24 -top-28 h-[400px] w-[400px] rounded-full bg-brand/10 blur-3xl" />
         <div className="pointer-events-none absolute -left-28 top-32 h-[280px] w-[280px] rounded-full bg-brand-lime/10 blur-3xl" />
 
-        <div className="relative mx-auto max-w-[1100px] px-4 pb-12 pt-12 lg:px-8 lg:pb-20 lg:pt-20">
+        <div className="relative mx-auto max-w-[1100px] px-4 pb-7 pt-7 sm:pt-11 lg:px-8 lg:pb-14 lg:pt-20">
           <div className="eyebrow flex items-center gap-2">
             <span className="live-dot" />
             {page.tags || "Live markets"}
           </div>
 
-          <h1 className="mt-4 max-w-[20ch] text-[34px] font-semibold leading-[1.07] tracking-tight text-foreground sm:text-[46px] lg:text-[58px]">
+          <h1 className="mt-3 max-w-[19ch] text-[30px] font-semibold leading-[1.08] tracking-tight text-foreground sm:max-w-[20ch] sm:text-[44px] lg:text-[56px]">
             {page.headline}
           </h1>
 
           {page.subheadline ? (
-            <p className="mt-4 max-w-[62ch] text-[14.5px] leading-relaxed text-muted-foreground sm:text-[16.5px]">
+            <p className="mt-3 max-w-[60ch] text-[14px] leading-relaxed text-muted-foreground sm:mt-4 sm:text-[16px]">
               {page.subheadline}
             </p>
           ) : null}
@@ -124,17 +124,19 @@ export default async function LandingPage({ params, searchParams }: Props) {
             </div>
           ) : null}
 
-          <div className="mt-7 flex flex-wrap items-center gap-3">
+          {/* Full-width on a phone: thumbs, not cursors. A 44px minimum tap
+              target, one clear primary action, the secondary below it. */}
+          <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center sm:gap-3">
             <Link
               href={signupHref}
-              className="pressable btn-money inline-flex h-12 items-center gap-2 rounded-xl px-6 text-[13.5px] font-semibold"
+              className="pressable btn-money inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold sm:h-12 sm:w-auto sm:text-[13.5px]"
             >
               {page.cta}
-              <FiArrowRight size={15} />
+              <FiArrowRight size={16} />
             </Link>
             <Link
               href="/login"
-              className="pressable inline-flex h-12 items-center gap-2 rounded-xl border border-border bg-card px-6 text-[13.5px] font-semibold text-foreground"
+              className="pressable inline-flex h-[46px] w-full items-center justify-center gap-2 rounded-xl border border-border bg-card px-6 text-[13.5px] font-semibold text-foreground sm:h-12 sm:w-auto"
             >
               I already have an account
             </Link>
@@ -147,21 +149,23 @@ export default async function LandingPage({ params, searchParams }: Props) {
         </div>
       </section>
 
-      {/* ── Highlights ──────────────────────────────────────────────────────
-          This page's own selling points, from the database. They used to be
-          absent entirely, so eight different landing pages showed the same
-          three generic product cards and read identically to a visitor who had
-          arrived from two different campaigns. */}
+      {/* ── This page's own selling points ──────────────────────────────────
+          Two columns on a phone, not one. A single column of four bullets is
+          a long grey wall on a 390px screen; tiles read as a feature set and
+          let the offers that matter sit above the fold. */}
       {page.highlights.length ? (
         <section className="border-y border-border bg-card/40">
-          <div className="mx-auto max-w-[1100px] px-4 py-8 lg:px-8 lg:py-10">
-            <div className="grid gap-x-6 gap-y-3.5 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mx-auto max-w-[1100px] px-4 py-6 lg:px-8 lg:py-10">
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
               {page.highlights.map((h) => (
-                <div key={h} className="flex items-start gap-2.5">
-                  <span className="mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-brand/12 text-brand">
-                    <FiCheckCircle size={12} />
+                <div
+                  key={h}
+                  className="flex items-start gap-2.5 rounded-xl border border-border bg-card p-3 sm:p-3.5"
+                >
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand/12 text-brand">
+                    <FiCheckCircle size={14} />
                   </span>
-                  <span className="text-[13px] font-medium leading-snug text-foreground">
+                  <span className="text-[12.5px] font-medium leading-snug text-foreground sm:text-[13px]">
                     {h}
                   </span>
                 </div>
@@ -173,7 +177,7 @@ export default async function LandingPage({ params, searchParams }: Props) {
 
       {/* ── Proof points ────────────────────────────────────────────────── */}
       <section className="border-y border-border bg-card/40">
-        <div className="mx-auto grid max-w-[1100px] gap-4 px-4 py-12 sm:grid-cols-2 lg:grid-cols-3 lg:px-8">
+        <div className="mx-auto grid max-w-[1100px] gap-3 px-4 py-9 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:px-8 lg:py-12">
           {[
             [
               <FiBarChart2 key="1" size={18} />,
@@ -187,21 +191,21 @@ export default async function LandingPage({ params, searchParams }: Props) {
             ],
             [
               <FiShield key="3" size={18} />,
-              "Your money, guarded",
-              "Withdrawals go only to the bank or UPI account you registered. Add a new one and withdrawals pause until it is verified.",
+              "Money out to your own account",
+              "Withdrawals go only to the bank or UPI account registered in your name — never to a destination someone else added.",
             ],
           ].map(([icon, title, body]) => (
             <div
               key={String(title)}
-              className="rounded-2xl border border-border bg-card p-4"
+              className="rounded-2xl border border-border bg-card p-3.5 sm:p-4"
             >
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-brand/10 text-brand">
                 {icon as React.ReactNode}
               </span>
-              <div className="mt-3 text-[13.5px] font-semibold text-foreground">
+              <div className="mt-2.5 text-[13px] font-semibold text-foreground sm:text-[13.5px]">
                 {title as string}
               </div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">
+              <p className="mt-1.5 text-[12px] leading-relaxed text-muted-foreground sm:text-[12.5px]">
                 {body as string}
               </p>
             </div>
@@ -209,26 +213,71 @@ export default async function LandingPage({ params, searchParams }: Props) {
         </div>
       </section>
 
+      {/* ── How it works ────────────────────────────────────────────────────
+          Three steps, because on a phone the visitor's real question is not
+          "what does it do" but "how much of my evening does this cost me". */}
+      <section className="mx-auto max-w-[1100px] px-4 py-10 lg:px-8 lg:py-14">
+        <h2 className="text-[20px] font-semibold tracking-tight text-foreground sm:text-[25px]">
+          Open and trading in three steps
+        </h2>
+        <div className="mt-5 grid gap-3 sm:grid-cols-3 sm:gap-4">
+          {[
+            [
+              "1",
+              "Create your account",
+              "Name, email, mobile number. About two minutes on a phone.",
+            ],
+            [
+              "2",
+              "Fund it your way",
+              "UPI or netbanking. Add money when you are ready — the practice book needs none.",
+            ],
+            [
+              "3",
+              "Trade the live market",
+              "NSE, BSE and MCX are live the moment you sign in. Start small, size up when it earns it.",
+            ],
+          ].map(([n, t, d]) => (
+            <div
+              key={n}
+              className="flex gap-3 rounded-2xl border border-border bg-card p-3.5 sm:p-4"
+            >
+              <span className="display-num grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-brand/12 text-[13px] font-bold text-brand">
+                {n}
+              </span>
+              <div>
+                <div className="text-[13px] font-semibold text-foreground sm:text-[13.5px]">
+                  {t}
+                </div>
+                <p className="mt-1 text-[12px] leading-relaxed text-muted-foreground sm:text-[12.5px]">
+                  {d}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
       {/* ── Closing CTA ─────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1100px] px-4 py-14 lg:px-8">
-        <div className="relative overflow-hidden broker-card p-6 sm:p-9">
+      <section className="mx-auto max-w-[1100px] px-4 pb-12 lg:px-8 lg:pb-14">
+        <div className="relative overflow-hidden broker-card p-5 sm:p-9">
           <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full bg-brand/12 blur-3xl" />
-          <div className="relative flex flex-wrap items-center justify-between gap-6">
+          <div className="relative flex flex-col gap-5 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-6">
             <div className="max-w-[50ch]">
               <div className="eyebrow">Two minutes to open</div>
-              <h2 className="mt-2 text-[23px] font-semibold tracking-tight text-foreground sm:text-[27px]">
+              <h2 className="mt-2 text-[21px] font-semibold tracking-tight text-foreground sm:text-[27px]">
                 Open your account and look around
               </h2>
-              <p className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
+              <p className="mt-2 text-[13px] leading-relaxed text-muted-foreground sm:text-[13.5px]">
                 Everything is visible before you commit a rupee. Markets are
                 live and the practice book is free.
               </p>
             </div>
             <Link
               href={signupHref}
-              className="pressable btn-money inline-flex h-12 items-center gap-2 rounded-xl px-6 text-[13.5px] font-semibold"
+              className="pressable btn-money inline-flex h-[52px] w-full items-center justify-center gap-2 rounded-xl px-6 text-[14.5px] font-semibold sm:h-12 sm:w-auto sm:text-[13.5px]"
             >
-              <FiSmartphone size={15} />
+              <FiSmartphone size={16} />
               {page.cta}
             </Link>
           </div>

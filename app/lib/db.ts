@@ -692,49 +692,6 @@ function ensureColumns(db: DatabaseSync) {
   if (!pageCols.has("highlights"))
     db.exec("ALTER TABLE landing_pages ADD COLUMN highlights TEXT");
 
-  // The three original landing pages predate that column, and the seeder uses
-  // INSERT OR IGNORE so it will never update a row that already exists — they
-  // would render without the highlights strip on every existing database,
-  // including the live one. Fill them here instead.
-  //
-  // Guarded on NULL/empty so it runs once and never overwrites copy an operator
-  // has since edited through the console.
-  const pageBackfill: [string, string[]][] = [
-    [
-      "start",
-      [
-        "NSE, BSE and MCX in one watchlist",
-        "Live prices, depth and candlesticks",
-        "Free practice credit — no deposit needed",
-        "Withdrawals to your own bank or UPI",
-      ],
-    ],
-    [
-      "options",
-      [
-        "Live option chain across expiries",
-        "Greeks and payoff charts on screen",
-        "Strategy builder before you commit",
-        "Practise the desk with virtual money",
-      ],
-    ],
-    [
-      "commodities",
-      [
-        "Live MCX contracts",
-        "Same terminal as your equities",
-        "Charting and margin calculators",
-        "One account, no separate funding",
-      ],
-    ],
-  ];
-  const setHighlights = db.prepare(
-    `UPDATE landing_pages SET highlights = ?
-      WHERE slug = ? AND (highlights IS NULL OR highlights = '')`,
-  );
-  for (const [slug, hs] of pageBackfill)
-    setHighlights.run(JSON.stringify(hs), slug);
-
   // A partner must never have two open payout requests at once. `requestPayout`
   // checks this in code, but a check-then-insert is not atomic: two requests
   // arriving together can both pass the check and both be written, letting the
@@ -878,10 +835,10 @@ function seedAffiliates(db: DatabaseSync) {
       "Open free account",
       "NSE · BSE · MCX",
       JSON.stringify([
+        "Up to 20× leverage on intraday",
         "NSE, BSE and MCX in one watchlist",
-        "Live prices, depth and candlesticks",
         "Free practice credit — no deposit needed",
-        "Withdrawals to your own bank or UPI",
+        "Withdraw to your own bank or UPI",
       ]),
     ],
     [
@@ -895,7 +852,7 @@ function seedAffiliates(db: DatabaseSync) {
       JSON.stringify([
         "Live option chain across expiries",
         "Greeks and payoff charts on screen",
-        "Strategy builder before you commit",
+        "Up to 20× leverage on intraday",
         "Practise the desk with virtual money",
       ]),
     ],
@@ -908,9 +865,9 @@ function seedAffiliates(db: DatabaseSync) {
       "Explore commodities",
       "MCX · Commodities",
       JSON.stringify([
-        "Live MCX contracts",
+        "Live MCX contracts — gold, silver, crude",
+        "Up to 20× leverage on intraday",
         "Same terminal as your equities",
-        "Charting and margin calculators",
         "One account, no separate funding",
       ]),
     ],
@@ -925,8 +882,8 @@ function seedAffiliates(db: DatabaseSync) {
       JSON.stringify([
         "Top up by UPI or netbanking",
         "Balance updates the moment it clears",
-        "Every deposit on your own ledger",
         "No queue and no approval wait",
+        "Every deposit on your own ledger",
       ]),
     ],
     [
@@ -938,10 +895,10 @@ function seedAffiliates(db: DatabaseSync) {
       "Withdraw on your terms",
       "Bank · UPI · Your own account",
       JSON.stringify([
-        "Request a withdrawal from your wallet",
-        "Paid to your registered bank or UPI",
-        "Still tied to your real wallet balance",
+        "Request a withdrawal any time",
+        "Paid to your own bank or UPI",
         "One clear status instead of chasing",
+        "No support ticket to raise",
       ]),
     ],
     [
@@ -971,7 +928,7 @@ function seedAffiliates(db: DatabaseSync) {
         "Live option chain by expiry",
         "Greeks that move with the market",
         "Payoff chart before you commit",
-        "NSE weekly contracts",
+        "Up to 20× leverage on intraday",
       ]),
     ],
     [
@@ -983,10 +940,10 @@ function seedAffiliates(db: DatabaseSync) {
       "Start your session",
       "Intraday · Equities · Futures",
       JSON.stringify([
+        "Up to 20× leverage on intraday",
         "One watchlist across NSE, BSE and MCX",
         "Live depth and candlesticks",
         "Order status without digging",
-        "Intraday square-off handled for you",
       ]),
     ],
   ];
@@ -1017,6 +974,22 @@ function seedAffiliates(db: DatabaseSync) {
       now,
       now,
     );
+
+  // Refresh the seeded copy on a database that already has these pages.
+  //
+  // `INSERT OR IGNORE` deliberately never updates an existing row, so a copy
+  // change would otherwise only ever reach a brand-new database — the live one
+  // would keep the old wording forever.
+  //
+  // Guarded on `updated_at = created_at`, which stays true only while nobody has
+  // edited the row. So this reaches untouched seed content and stops the moment
+  // an operator makes the copy their own.
+  const refreshCopy = db.prepare(
+    `UPDATE landing_pages SET highlights = ?, updated_at = ?
+      WHERE slug = ? AND updated_at = created_at`,
+  );
+  for (const [slug, , , , , , , highlights] of pages)
+    refreshCopy.run(highlights, now, slug);
 }
 
 // One-time rename of the original paper_* tables to trade_*. Idempotent: it
