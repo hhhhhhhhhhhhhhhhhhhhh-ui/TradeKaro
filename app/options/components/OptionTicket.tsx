@@ -5,8 +5,10 @@ import {
   canAfford,
   executeFill,
   getBackendCash,
+  getMarginPct,
   getPositions,
   getWalletBalance,
+  marginFor,
 } from "@/app/lib/trading";
 import { lotSizeFor } from "@/app/options/components/lots";
 import type { ChainRow } from "@/app/options/components/optTypes";
@@ -100,9 +102,19 @@ export default function OptionTicket({
   const value = units * price;
   const walletNow = getWalletBalance(getBackendCash());
   const blocked = sel.action === "BUY" && !canAfford(getBackendCash(), value);
+  // What the ledger actually blocks — and `canAfford` above tests THIS, not the
+  // exposure. The ticket showed only the order value, so a ₹1.5L leg read as if
+  // it needed ₹1.5L in the wallet when the gate was testing a twentieth of it.
+  // Nothing on this chain surface stated the margin until now.
+  const marginPct = getMarginPct();
+  const marginNeeded = marginFor(value);
+  const lev = Math.round((100 / marginPct) * 10) / 10;
   // Demat-style preview: wallet after this fill + exit value of the open leg.
+  // The wallet moves by the MARGIN, not by the premium — subtracting the full
+  // exposure overstated the hit by exactly the leverage factor and disagreed
+  // with the gate checked one line above.
   const walletAfter =
-    sel.action === "BUY" ? walletNow - value : walletNow + value;
+    sel.action === "BUY" ? walletNow - marginNeeded : walletNow + marginNeeded;
   const exitMtm = openLeg ? (price - openLeg.avg) * openLeg.qty : 0;
 
   function fire() {
@@ -118,7 +130,7 @@ export default function OptionTicket({
     }
     if (cur.action === "BUY" && !canAfford(getBackendCash(), value)) {
       sileo.error({
-        title: `Need ₹${value.toFixed(0)} — wallet ₹${getWalletBalance(getBackendCash()).toFixed(0)}`,
+        title: `Need ₹${marginFor(value).toFixed(0)} margin (${getMarginPct()}% of ₹${value.toFixed(0)}) — wallet ₹${getWalletBalance(getBackendCash()).toFixed(0)}`,
       });
       return;
     }
@@ -151,7 +163,7 @@ export default function OptionTicket({
       setWallet(getWalletBalance(getBackendCash()));
       sileo.success({
         title: `${cur.action} ${lots}×${underlying} ${cur.strike}${cur.side} @ ₹${price.toFixed(2)}`,
-        description: `${units} units · ₹${value.toFixed(0)}`,
+        description: `${units} units · exposure ₹${value.toFixed(0)} · margin ₹${marginFor(value).toFixed(0)}`,
       });
       onFilled();
     } catch (e: any) {
@@ -251,6 +263,18 @@ export default function OptionTicket({
           </span>
           <span className="display-num text-lg font-bold">{money(value)}</span>
         </div>
+        <div className="flex items-baseline justify-between border-t border-dashed border-border pt-2.5">
+          <span className="text-[11.5px] text-muted-foreground">
+            Margin blocked
+            <span className="text-foreground/45">
+              {" "}
+              · {marginPct}% ({lev}x)
+            </span>
+          </span>
+          <span className="display-num text-lg font-bold">
+            {money(marginNeeded)}
+          </span>
+        </div>
         <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
           <div className="border border-border px-2.5 py-2">
             <div className="text-foreground/45">WALLET AFTER</div>
@@ -279,7 +303,8 @@ export default function OptionTicket({
         </div>
         {blocked && (
           <div className="text-[11px] font-mono text-negative border border-negative/40 bg-negative/5 px-2.5 py-2">
-            Insufficient margin for this BUY — lower lots or ask the admin for a
+            Need {money(marginNeeded)} margin ({marginPct}% of {money(value)}) —
+            wallet {money(walletNow)}. Lower the lots, or ask the admin for a
             higher leverage.
           </div>
         )}

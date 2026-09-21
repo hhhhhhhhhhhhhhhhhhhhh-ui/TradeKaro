@@ -7,12 +7,15 @@ export default function ChainStatsStrip({
   live,
   expiry,
   count,
+  marginPct,
 }: {
   rows: ChainRow[];
   ltp: number;
   live: boolean;
   expiry: string;
   count: number;
+  /** % of premium the ledger blocks, resolved per user. 5 ⇒ 20x. */
+  marginPct: number;
 }) {
   const s = calcStats(rows, ltp);
   // Distance from spot to max-pain: how far expiry magnet sits.
@@ -28,6 +31,17 @@ export default function ChainStatsStrip({
         tone: live ? "text-positive" : "text-foreground/50",
       },
       { label: "EXPIRY", value: expiry || "—", sub: `${count} strikes` },
+      {
+        // How much of the premium has to be in the wallet. Without this the
+        // chain showed the exposure (spots, OI, max pain) and never the one
+        // number that decides whether a leg can be opened at all.
+        label: "MARGIN",
+        value: `${marginPct}%`,
+        sub:
+          marginPct > 0
+            ? `${Math.round((100 / marginPct) * 10) / 10}x on premium`
+            : "—",
+      },
       {
         label: "PCR (OI)",
         value: s ? s.pcr.toFixed(2) : "—",
@@ -60,7 +74,7 @@ export default function ChainStatsStrip({
     ];
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-6 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-7 gap-2 sm:gap-3">
         {cells.map((c) => (
           <div
             key={c.label}

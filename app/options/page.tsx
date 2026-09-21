@@ -8,7 +8,8 @@ import LivePnlStrip from "@/app/components/LivePnlStrip";
 import useHasSession from "@/app/hooks/useHasSession";
 import { useLiveTicks } from "@/app/hooks/useLiveTicks";
 import { lotSizeFor } from "./components/lots";
-import { getPositions } from "@/app/lib/trading";
+import { getPositions, useTradingAccount } from "@/app/lib/trading";
+import { usePublicConfig } from "@/app/hooks/usePublicConfig";
 import type { ChainRow } from "./components/optTypes";
 
 const PRESETS: { sym: string; label: string; hint: string }[] = [
@@ -49,6 +50,17 @@ export default function OptionsPage() {
   const { ticks, live } = useLiveTicks([u], 3000);
   const ltp = ticks[u]?.ltp ?? 0;
   const lot = lotSizeFor(u);
+  // Same precedence the order gate uses: the per-user override wins, then the
+  // platform default, then 5. Read through hooks rather than `getMarginPct()`
+  // so the strip repaints when the account or the public config lands.
+  const acct = useTradingAccount();
+  const cfg = usePublicConfig();
+  const marginPct =
+    Number(acct?.marginPct) > 0
+      ? Number(acct?.marginPct)
+      : Number(cfg.trading?.marginPct) > 0
+        ? Number(cfg.trading?.marginPct)
+        : 5;
   const openLegs = useMemo(
     () =>
       getPositions().filter((p) => p.kind === "OPTION" && p.underlying === u)
@@ -146,6 +158,7 @@ export default function OptionsPage() {
           live={live}
           expiry={expiry}
           count={rows.length}
+          marginPct={marginPct}
         />
 
         <LivePnlStrip compact />
