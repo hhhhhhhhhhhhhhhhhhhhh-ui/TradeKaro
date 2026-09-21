@@ -17,8 +17,6 @@ import { lotOf, useInstrument } from "@/app/hooks/useInstrument";
 import { DEPTH_PICK_EVENT } from "@/app/stocks/[...symbol]/components/hooks/useOrderBook";
 import { money } from "@/app/lib/format";
 
-const MARGIN: Record<Product, number> = { CNC: 1, MIS: 5 };
-
 export default function OrderTicket(props: {
   symbol: string;
   companyName: string;
@@ -127,30 +125,52 @@ export default function OrderTicket(props: {
     Number(meta?.contract?.tick) > 0 ? Number(meta?.contract?.tick) : 0.05;
   const estValue =
     units * (orderType === "MARKET" ? liveLtp : limitPrice || liveLtp);
-  // MIS shows 5x leverage but orders block full value, so the
-  // margin line is informational — the wallet check below uses estValue.
-  const marginReq = estValue / (MARGIN[product] || 1);
   const charges =
     (tradingRules?.brokerageFlat ?? 0) +
     (estValue * (tradingRules?.brokeragePct ?? 0)) / 100;
   const [walletNow, setWalletNow] = useState<number | null>(null);
+  // The margin % the ledger will actually charge this user.
+  //
+  // There is NO per-product margin. The server computes
+  // `required = openingUnits * price * pct / 100` from the account's single
+  // `marginPct` — resolved as the admin's per-user override, else the platform
+  // default in Settings → Trading & Risk. `product` selects the MIS square-off
+  // window and nothing else.
+  //
+  // A table here used to declare `{ CNC: 1, MIS: 5 }`. That number was
+  // invented: it quoted a margin the wallet check never used, it disagreed with
+  // the ledger about what would be blocked, and moving the admin margin did not
+  // move it — so an operator raising leverage saw the ticket keep saying 5×.
+  //
+  // Held in state rather than computed during render, for the same reason as
+  // `walletNow`: `getMarginPct()` returns a value the SERVER resolved, so
+  // calling it while rendering would print one figure on the server and a
+  // different one on hydration.
+  const [marginPct, setMarginPct] = useState<number | null>(null);
   useEffect(() => {
     (async () => {
       try {
-        const { getBackendCash, getWalletBalance } =
+        const { getBackendCash, getMarginPct, getWalletBalance } =
           await import("@/app/lib/trading");
         setWalletNow(getWalletBalance(getBackendCash()));
+        setMarginPct(getMarginPct());
       } catch {
         /* ignore */
       }
     })();
   }, []);
+  // Null until the account resolves. The line is omitted rather than shown as a
+  // guess, because a wrong margin figure is worse than no figure at all.
+  const marginReq = marginPct === null ? null : (estValue * marginPct) / 100;
 
   async function fire(side: "BUY" | "SELL", execPrice: number) {
     // The server ledger is the source of truth — settle locally for instant
     // feedback, then let the server record the session activity.
-    const { executeFill: executePaperFill, getBackendCash } =
-      await import("@/app/lib/trading");
+    const {
+      executeFill: executePaperFill,
+      getBackendCash,
+      marginFor: marginOf,
+    } = await import("@/app/lib/trading");
     try {
       executePaperFill({
         scrip: decodeURIComponent(props.symbol),
@@ -190,7 +210,7 @@ export default function OrderTicket(props: {
       : `${qty} ${props.symbol}`;
     sileo.success({
       title: `${side} ${label} @ ₹${execPrice.toFixed(2)} [${orderType}/${product}]`,
-      description: `Est. value ₹${(units * execPrice).toFixed(0)} · Margin blocked ₹${((units * execPrice) / (MARGIN[product] || 1)).toFixed(0)}${charges > 0 ? ` · Charges ₹${charges.toFixed(2)}` : ""}`,
+      description: `Est. value ₹${(units * execPrice).toFixed(0)} · Margin blocked ₹${marginOf(units * execPrice).toFixed(0)}${charges > 0 ? ` · Charges ₹${charges.toFixed(2)}` : ""}`,
     });
     props.onClose();
   }
@@ -259,13 +279,18 @@ export default function OrderTicket(props: {
     try {
       if (orderType === "MARKET") {
         if (props.side === "BUY") {
-          const { canAfford, getBackendCash, getWalletBalance } =
+          const { canAfford, getBackendCash, getMarginPct, getWalletBalance } =
             await import("@/app/lib/trading");
           const w = getWalletBalance(getBackendCash());
           setWalletNow(w);
+          // The gate below tests the MARGIN, so the message has to quote the
+          // margin. It used to say "need ₹<full value>", which told a customer
+          // who was short ₹900 of margin that they needed ₹18,000 — a number
+          // no deposit of theirs would have been aimed at.
+          const pct = getMarginPct();
           if (!canAfford(getBackendCash(), estValue)) {
             sileo.error({
-              title: `Insufficient wallet — need ₹${estValue.toFixed(0)}, have ₹${w.toFixed(0)}`,
+              title: `Insufficient wallet — need ₹${((estValue * pct) / 100).toFixed(0)} margin (${pct}% of ₹${estValue.toFixed(0)}), have ₹${w.toFixed(0)}`,
             });
             return;
           }
@@ -428,11 +453,20 @@ export default function OrderTicket(props: {
             </div>
           )}
           <div className="text-[12.5px] text-muted-foreground">
-            Est. value {money(estValue, 2)} · Margin {money(marginReq, 2)}
+            Est. value {money(estValue, 2)}
+            {marginReq !== null && <> · Margin {money(marginReq, 2)}</>}
             {charges > 0 && <> · Charges {money(charges, 2)}</>}
-            {product === "MIS" && (
+            {/* The rate is stated outright. It previously read "MIS 5x is
+                display-only — orders block full value", which was wrong twice
+                over: the rate is not 5x unless the admin says so, and orders
+                block margin, not full value. */}
+            {marginPct !== null && (
               <span className="block text-[11px] text-muted-foreground/80">
-                MIS 5x is display-only — orders block full value.
+                {`Margin is ${marginPct}% of trade value` +
+                  (marginPct > 0
+                    ? ` (up to ${Math.round((100 / marginPct) * 10) / 10}x)`
+                    : "") +
+                  ` — the same rate for CNC and MIS.`}
               </span>
             )}
             {walletNow !== null && (

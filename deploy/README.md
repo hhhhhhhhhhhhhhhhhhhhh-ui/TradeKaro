@@ -163,7 +163,13 @@ journalctl -u tradekaro-dispatch -n 20
 A healthy idle run prints:
 
 ```json
-{"ok":true,"skipped":"nothing_configured","configured":[],"partnerPixels":0,"requeued":0}
+{
+  "ok": true,
+  "skipped": "nothing_configured",
+  "configured": [],
+  "partnerPixels": 0,
+  "requeued": 0
+}
 ```
 
 That means no platform pixel is configured and no partner has one either, so the endpoint
@@ -185,7 +191,7 @@ journalctl -u tradekaro-dispatch -n 5     # look for "Unauthorized"
 
 The secret in `/opt/tradekaro/.env.production` must match what the app sees. Two things
 that catch people out: the app reads that file at **startup**, so a new secret needs
-`systemctl restart tradekaro`; and systemd reads it for the *timer* separately, which is
+`systemctl restart tradekaro`; and systemd reads it for the _timer_ separately, which is
 why the value lives in one file rather than being written into the unit.
 
 ### Recovering terminal deliveries
@@ -206,15 +212,15 @@ curl -fsS -H "x-dispatch-secret: $TRACKING_DISPATCH_SECRET" \
 
 ## Troubleshooting
 
-| Symptom                             | Cause                                                                                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| Page loads, prices never update     | SSE is buffered. Confirm `proxy_buffering off` on `/api/market/stream` and that `X-Accel-Buffering: no` reaches the browser. |
-| `502 Bad Gateway`                   | The app is not listening. `systemctl status tradekaro`, then `journalctl -u tradekaro -n 80`.                                |
-| `connection refused` from nginx     | `HOSTNAME` is not `0.0.0.0`, so Node bound to localhost only.                                                                |
-| `Cannot find module 'node:sqlite'`  | Node is older than 23.4. `node -v` must be 24.x.                                                                             |
-| All users logged out after a deploy | `AUTH_SECRET` changed. That is expected — it signs the session cookies.                                                      |
-| Every account gone after a deploy   | `data/` was not preserved. It must stay outside the repo, on a path that survives deploys.                                   |
-| Squares-off never run               | The process must stay up. `Restart=always` is already set; check the service is not being OOM-killed.                        |
-| Conversions never leave the server  | No dispatch timer. `systemctl list-timers tradekaro-dispatch.timer` — nothing listed means it was never enabled.             |
-| The timer fires but always 401s     | `TRACKING_DISPATCH_SECRET` is missing or the app has not been restarted since it was added. See "If it 401s" above.         |
+| Symptom                              | Cause                                                                                                                        |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| Page loads, prices never update      | SSE is buffered. Confirm `proxy_buffering off` on `/api/market/stream` and that `X-Accel-Buffering: no` reaches the browser. |
+| `502 Bad Gateway`                    | The app is not listening. `systemctl status tradekaro`, then `journalctl -u tradekaro -n 80`.                                |
+| `connection refused` from nginx      | `HOSTNAME` is not `0.0.0.0`, so Node bound to localhost only.                                                                |
+| `Cannot find module 'node:sqlite'`   | Node is older than 23.4. `node -v` must be 24.x.                                                                             |
+| All users logged out after a deploy  | `AUTH_SECRET` changed. That is expected — it signs the session cookies.                                                      |
+| Every account gone after a deploy    | `data/` was not preserved. It must stay outside the repo, on a path that survives deploys.                                   |
+| Squares-off never run                | The process must stay up. `Restart=always` is already set; check the service is not being OOM-killed.                        |
+| Conversions never leave the server   | No dispatch timer. `systemctl list-timers tradekaro-dispatch.timer` — nothing listed means it was never enabled.             |
+| The timer fires but always 401s      | `TRACKING_DISPATCH_SECRET` is missing or the app has not been restarted since it was added. See "If it 401s" above.          |
 | Unit file edited but nothing changed | systemd reads these into memory. `systemctl daemon-reload` after editing, and re-`install` after pulling a new version.      |

@@ -411,7 +411,9 @@ async function main() {
       check(
         "a partner can save a pixel with a token",
         save.status === 200 && sv?.ok === true,
-        save.status !== 200 ? `status=${save.status}` : `id=${sv?.pixel?.pixelId}`,
+        save.status !== 200
+          ? `status=${save.status}`
+          : `id=${sv?.pixel?.pixelId}`,
       );
 
       const after = await dispatch("", auth);
@@ -441,10 +443,10 @@ async function main() {
 
       // Removing the pixel has to put it back to idle, or a partner who
       // experiments once leaves the timer doing work forever.
-      const del = await fetch(
-        `${BASE}/api/partners/pixels?provider=meta`,
-        { method: "DELETE", headers: { cookie } },
-      );
+      const del = await fetch(`${BASE}/api/partners/pixels?provider=meta`, {
+        method: "DELETE",
+        headers: { cookie },
+      });
       check(
         "the pixel can be removed again",
         del.status === 200,
