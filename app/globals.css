@@ -975,14 +975,23 @@ form > label {
   color: rgb(var(--pr-muted));
 }
 
-/* ── action sheet ── */
+/* ── action sheet ────────────────────────────────────────────────────────────
+   Bottom sheet on phones, a centred card from 640px up. Presentation only: the
+   feature set is unchanged — grabber, symbol + 3 tags, LTP + day change, BID/ASK,
+   OHLC, Current P&L + Exit All, Add More / Partial Exit with an inline qty
+   stepper, and close on Escape or an outside tap. */
 .pr-overlay {
   position: fixed;
   inset: 0;
   z-index: 99998;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  background: rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(3px);
+  animation: pr-fade 0.18s ease both;
 }
+/* pointer-events:none so an outside tap falls through to .pr-overlay beneath.
+   Without it this full-viewport wrapper swallowed the click — elementFromPoint
+   at the corner returned "pr-sheet-wrap" — so the sheet could only be dismissed
+   with Escape, despite the component documenting an overlay tap. */
 .pr-sheet-wrap {
   position: fixed;
   inset: 0;
@@ -990,48 +999,94 @@ form > label {
   display: flex;
   align-items: flex-end;
   justify-content: center;
+  pointer-events: none;
 }
 .pr-sheet {
+  pointer-events: auto;
   width: 100%;
-  max-width: 32rem;
-  max-height: 92vh;
+  max-width: 30rem;
+  max-height: 92dvh;
   overflow-y: auto;
-  padding: 0 16px 18px;
-  border-radius: 10px 10px 0 0;
+  overscroll-behavior: contain;
+  padding: 0 18px calc(20px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid rgb(var(--pr-edge));
+  border-radius: 20px 20px 0 0;
   background: rgb(var(--pr-sheet));
   color: rgb(var(--pr-text));
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 -12px 44px rgb(0 0 0 / 0.26);
+  animation: pr-rise 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 .pr-grabber {
-  width: 40px;
+  width: 44px;
   height: 4px;
   border-radius: 99px;
   background: rgb(var(--pr-grab));
-  margin: 10px auto 14px;
+  margin: 10px auto 16px;
+}
+@keyframes pr-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pr-rise {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pr-overlay,
+  .pr-sheet {
+    animation: none;
+  }
+}
+/* Desktop: a bottom-anchored 353px card left ~550px of dead space above it, so
+   centre it and float it clear of the edge instead. */
+@media (min-width: 640px) {
+  .pr-sheet-wrap {
+    align-items: center;
+    padding: 24px;
+  }
+  .pr-sheet {
+    max-height: 86dvh;
+    border: 1px solid rgb(var(--pr-edge));
+    border-radius: 20px;
+    box-shadow:
+      0 24px 64px rgb(0 0 0 / 0.32),
+      0 2px 8px rgb(0 0 0 / 0.16);
+  }
 }
 .pr-sheet-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
 }
 .pr-symbol-col {
   flex: 1 1 0%;
   min-width: 0;
 }
 .pr-symbol-name {
-  font-size: 16.8px;
-  font-weight: 500;
-  line-height: 25.2px;
-  letter-spacing: 0.168px;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
   color: rgb(var(--pr-strong));
 }
 .pr-tags {
   display: flex;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 8px;
   flex-wrap: wrap;
 }
 .pr-badge {
@@ -1039,160 +1094,270 @@ form > label {
   border-radius: 6px;
   background: rgb(var(--pr-raised));
   color: rgb(var(--pr-sub));
-  font-size: 9.92px;
-  font-weight: 500;
-  line-height: 14.88px;
-  letter-spacing: 0.2976px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 15px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 .pr-badge.is-buy {
   color: rgb(var(--pr-up));
-  background: rgb(var(--pr-up) / 0.12);
+  background: rgb(var(--pr-up) / 0.14);
 }
 .pr-badge.is-sell {
   color: rgb(var(--pr-down));
-  background: rgb(var(--pr-down) / 0.12);
+  background: rgb(var(--pr-down) / 0.14);
 }
 .pr-price-col {
   flex: 0 0 auto;
   text-align: right;
 }
+/* The headline price is the strongest ink on the sheet, and the day change is
+   tinted by its own sign — a loss used to render as neutral grey. */
 .pr-ltp {
-  font-size: 16.8px;
-  font-weight: 500;
-  line-height: 18.48px;
-  color: rgb(var(--pr-muted));
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: rgb(var(--pr-strong));
 }
 .pr-change {
-  margin-top: 3px;
-  font-size: 11.52px;
-  font-weight: 500;
-  line-height: 17.28px;
+  margin-top: 4px;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1.45;
   color: rgb(var(--pr-muted));
 }
+.pr-change.is-up {
+  color: rgb(var(--pr-up));
+}
+.pr-change.is-down {
+  color: rgb(var(--pr-down));
+}
+.pr-change-pct {
+  margin-left: 6px;
+  font-weight: 500;
+}
+/* Two cells with a hairline between them, label over value — the inline
+   "BID x   ASK y" pair read as unfinished. */
 .pr-bidask {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-top: 14px;
+  border: 1px solid rgb(var(--pr-edge));
+  border-radius: 12px;
+  background: rgb(var(--pr-card));
+  overflow: hidden;
 }
 .pr-ba {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 9px 13px;
+  min-width: 0;
+}
+.pr-ba + .pr-ba {
+  border-left: 1px solid rgb(var(--pr-edge));
 }
 .pr-ba-label {
-  font-size: 11.52px;
-  font-weight: 500;
-  line-height: 17.28px;
-  letter-spacing: 0.2304px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: rgb(var(--pr-sub));
 }
 .pr-ba-value {
-  font-size: 13.6px;
-  font-weight: 500;
-  line-height: 20.4px;
-  color: rgb(var(--pr-accent));
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: rgb(var(--pr-strong));
 }
+/* Standard depth convention: bid is the buy side, ask the sell side. */
+.pr-ba:first-child .pr-ba-value {
+  color: rgb(var(--pr-up));
+}
+.pr-ba:last-child .pr-ba-value {
+  color: rgb(var(--pr-down));
+}
+/* ...but a missing quote must stay neutral. Without this an empty ASK rendered
+   as a red em-dash, which reads as a loss. */
+.pr-bidask .pr-ba-value.is-empty {
+  color: rgb(var(--pr-muted));
+}
+/* One hairline grid: the border colour shows through 1px gaps, so the four
+   cells read as a divided strip rather than four boxes inside a box. */
 .pr-ohlc {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  margin-top: 12px;
-  padding: 9px 12px;
-  border-radius: 8px;
-  border: 1px solid rgb(var(--pr-line));
-  background: rgb(var(--pr-card));
+  gap: 1px;
+  margin-top: 10px;
+  border: 1px solid rgb(var(--pr-edge));
+  border-radius: 12px;
+  background: rgb(var(--pr-edge));
+  overflow: hidden;
 }
 .pr-ohlc-item {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 2px;
+  padding: 9px 4px;
   text-align: center;
   min-width: 0;
+  background: rgb(var(--pr-card));
 }
 .pr-ohlc-label {
-  font-size: 9.6px;
-  font-weight: 500;
-  line-height: 14.4px;
-  letter-spacing: 0.384px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: rgb(var(--pr-sub));
 }
 .pr-ohlc-value {
-  font-size: 13.6px;
-  font-weight: 500;
-  line-height: 20.4px;
-  color: rgb(var(--pr-text));
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: rgb(var(--pr-strong));
 }
 .pr-sheet-pnl {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 14px;
   margin-top: 14px;
-  padding: 14px 16px;
-  border-radius: 8px;
-  border: 1px solid rgb(var(--pr-line));
+  padding: 14px 15px;
+  border: 1px solid rgb(var(--pr-edge));
+  border-radius: 12px;
   background: rgb(var(--pr-card));
 }
 .pr-sheet-pnl-left {
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
+  min-width: 0;
 }
 .pr-sheet-pnl-label {
-  font-size: 10.24px;
-  font-weight: 500;
-  line-height: 15.36px;
-  letter-spacing: 0.512px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   color: rgb(var(--pr-sub));
 }
 .pr-sheet-pnl-value {
-  font-size: 25.6px;
-  font-weight: 500;
-  line-height: 25.6px;
-  letter-spacing: -0.512px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  color: rgb(var(--pr-muted));
 }
+.pr-sheet-pnl-value.is-up {
+  color: rgb(var(--pr-up));
+}
+.pr-sheet-pnl-value.is-down {
+  color: rgb(var(--pr-down));
+}
+.pr-sheet-pnl-value.is-flat {
+  color: rgb(var(--pr-muted));
+}
+/* Destructive, but a tinted outline rather than a second solid red slab beside
+   Partial Exit — two full-saturation reds left the sheet with no hierarchy. */
 .pr-exit-all {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   flex: 0 0 auto;
-  padding: 9px 16px;
-  border: 0;
-  border-radius: 8px;
-  background: rgb(var(--pr-down));
-  color: #fff;
-  font-size: 12.48px;
-  font-weight: 500;
-  line-height: 18.72px;
+  padding: 10px 15px;
+  border: 1px solid rgb(var(--pr-down) / 0.4);
+  border-radius: 10px;
+  background: transparent;
+  color: rgb(var(--pr-down));
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.4;
+  touch-action: manipulation;
+  transition:
+    transform 0.12s ease,
+    background-color 0.16s ease,
+    border-color 0.16s ease;
+}
+.pr-exit-all:hover:not(:disabled) {
+  background: rgb(var(--pr-down) / 0.1);
+  border-color: rgb(var(--pr-down) / 0.6);
+}
+.pr-exit-all:disabled {
+  opacity: 0.5;
 }
 .pr-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 16px;
+  gap: 10px;
+  margin-top: 14px;
 }
+/* Idle = a neutral outline with a colour-cued icon; armed = a solid fill.
+   Tinting the idle fill in the action's own colour dropped its coloured ink to
+   4.1–4.5:1, and :hover sticks after a tap on touch — which put the armed
+   white/black ink on a pale tint, i.e. invisible text. A neutral outline sidesteps
+   both, and the solid armed state carries the stronger signal anyway. */
 .pr-action {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
   height: 50px;
-  border: 0;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 14.4px;
-  font-weight: 500;
-  line-height: 21.6px;
+  border: 1px solid rgb(var(--pr-edge));
+  border-radius: 12px;
+  background: rgb(var(--pr-card));
+  color: rgb(var(--pr-strong));
+  font-size: 14.5px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  touch-action: manipulation;
+  transition:
+    background-color 0.16s ease,
+    border-color 0.16s ease,
+    color 0.16s ease,
+    transform 0.1s ease;
 }
-.pr-action.is-add {
-  background: rgb(var(--pr-accent));
+.pr-action:disabled {
+  opacity: 0.45;
 }
-.pr-action.is-exit {
-  background: rgb(var(--pr-down));
+/* Press feedback comes from .pressable, which every .pr-action already carries. */
+.pr-action:not(:disabled):hover {
+  background: rgb(var(--pr-raised));
+  border-color: rgb(var(--pr-muted) / 0.45);
+}
+/* Direction cue while idle, without tinting the label. */
+.pr-action.is-add svg {
+  color: rgb(var(--pr-accent));
+}
+.pr-action.is-exit svg {
+  color: rgb(var(--pr-down));
+}
+/* Armed = solid, so the ink must be the matching *-foreground token: plain #fff
+   fails on the dark theme's light teal (1.86:1) and light red (2.77:1). The
+   :not(:disabled):hover variants repeat the hover selectors' specificity and sit
+   later in the file, so hovering an armed button keeps the fill. */
+.pr-action.is-add.is-armed,
+.pr-action.is-add.is-armed:not(:disabled):hover {
+  border-color: rgb(var(--brand));
+  background: rgb(var(--brand));
+  color: rgb(var(--brand-foreground));
+}
+.pr-action.is-add.is-armed svg {
+  color: rgb(var(--brand-foreground));
+}
+.pr-action.is-exit.is-armed,
+.pr-action.is-exit.is-armed:not(:disabled):hover {
+  border-color: rgb(var(--negative));
+  background: rgb(var(--negative));
+  color: rgb(var(--negative-foreground));
+}
+.pr-action.is-exit.is-armed svg {
+  color: rgb(var(--negative-foreground));
 }
 
 /* inline quantity control revealed by Add More / Partial Exit */
@@ -1201,39 +1366,62 @@ form > label {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
-  padding: 10px 14px;
-  border-radius: 8px;
-  border: 1px solid rgb(var(--pr-line));
-  background: rgb(var(--pr-card));
   flex-wrap: wrap;
+  margin-top: 12px;
+  padding: 11px 14px;
+  border: 1px solid rgb(var(--pr-edge));
+  border-radius: 12px;
+  background: rgb(var(--pr-card));
 }
+.pr-qtyinfo {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+/* One joined segmented control, 38px tall so it is comfortable under a thumb. */
 .pr-qtyctl {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex: 0 0 auto;
+  border: 1px solid rgb(var(--pr-edge));
+  border-radius: 10px;
+  background: rgb(var(--pr-panel));
+  overflow: hidden;
 }
 .pr-qtyctl button {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 1px solid rgb(var(--pr-line));
-  border-radius: 7px;
+  width: 38px;
+  height: 38px;
+  border: 0;
+  background: transparent;
+  color: rgb(var(--pr-strong));
+  touch-action: manipulation;
+  transition:
+    transform 0.12s ease,
+    background-color 0.14s ease;
+}
+.pr-qtyctl button:not(:disabled):hover {
   background: rgb(var(--pr-raised));
-  color: rgb(var(--pr-text));
+}
+.pr-qtyctl button:first-child {
+  border-right: 1px solid rgb(var(--pr-edge));
+}
+.pr-qtyctl button:last-child {
+  border-left: 1px solid rgb(var(--pr-edge));
 }
 .pr-qtyinput {
-  width: 62px;
-  height: 30px;
-  padding: 0 6px;
-  border: 1px solid rgb(var(--pr-line));
-  border-radius: 7px;
-  background: rgb(var(--pr-panel));
+  width: 64px;
+  height: 38px;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
   color: rgb(var(--pr-strong));
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   text-align: center;
 }
 .pr-qtyinput::-webkit-outer-spin-button,

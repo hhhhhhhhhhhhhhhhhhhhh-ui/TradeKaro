@@ -81,7 +81,6 @@ export default function PositionSheet(props: Props) {
   }, [step, stepMax]);
 
   const mtm = (ltp - pos.avg) * pos.qty;
-  const up = mtm >= 0;
 
   // Day change is measured against the provider's previous close, never against
   // our entry — mixing the two made the number meaningless.
@@ -118,8 +117,12 @@ export default function PositionSheet(props: Props) {
           .filter(Boolean)
           .join(" ");
 
-  // The reference prints an explicit sign with a plain hyphen-minus.
-  const plain = (v: number) => pnlSigned(v).replace("−", "-");
+  // Explicit sign with a plain hyphen-minus — but only when there is a sign.
+  // A flat position must not borrow the profit colour or print a "+".
+  const plain = (v: number) =>
+    v === 0 ? money(0, 2) : pnlSigned(v).replace("−", "-");
+  const toneClass = (v: number) =>
+    v > 0 ? "is-up" : v < 0 ? "is-down" : "is-flat";
 
   return createPortal(
     <>
@@ -146,22 +149,32 @@ export default function PositionSheet(props: Props) {
             </div>
             <div className="pr-price-col">
               <div className="pr-ltp">{ltpKnown ? money(ltp, 2) : "—"}</div>
-              <div className="pr-change">
-                {chg != null && chgPct != null
-                  ? ` ${plain(chg)} (${chgPct >= 0 ? "+" : "-"}${Math.abs(chgPct).toFixed(2)}%)`
-                  : " —"}
-              </div>
+              {chg != null && chgPct != null ? (
+                <div className={`pr-change ${toneClass(chg)}`}>
+                  {plain(chg)}
+                  <span className="pr-change-pct">
+                    {chgPct >= 0 ? "+" : "-"}
+                    {Math.abs(chgPct).toFixed(2)}%
+                  </span>
+                </div>
+              ) : (
+                <div className="pr-change">—</div>
+              )}
             </div>
           </div>
 
           <div className="pr-bidask">
             <div className="pr-ba">
               <span className="pr-ba-label">BID</span>
-              <span className="pr-ba-value">{bid ? money(bid, 2) : "—"}</span>
+              <span className={`pr-ba-value ${bid ? "" : "is-empty"}`}>
+                {bid ? money(bid, 2) : "—"}
+              </span>
             </div>
             <div className="pr-ba">
               <span className="pr-ba-label">ASK</span>
-              <span className="pr-ba-value">{ask ? money(ask, 2) : "—"}</span>
+              <span className={`pr-ba-value ${ask ? "" : "is-empty"}`}>
+                {ask ? money(ask, 2) : "—"}
+              </span>
             </div>
           </div>
 
@@ -179,12 +192,7 @@ export default function PositionSheet(props: Props) {
           <div className="pr-sheet-pnl">
             <div className="pr-sheet-pnl-left">
               <span className="pr-sheet-pnl-label">Current P&amp;L</span>
-              <span
-                className="pr-sheet-pnl-value"
-                style={{
-                  color: up ? "rgb(var(--pr-up))" : "rgb(var(--pr-down))",
-                }}
-              >
+              <span className={`pr-sheet-pnl-value ${toneClass(mtm)}`}>
                 {ltpKnown ? plain(mtm) : "—"}
               </span>
             </div>
@@ -193,7 +201,7 @@ export default function PositionSheet(props: Props) {
               disabled={busy || !ltpKnown}
               className="pr-exit-all pressable"
             >
-              <FiLogOut size={13} aria-hidden /> Exit All
+              <FiLogOut size={14} aria-hidden /> Exit All
             </button>
           </div>
 
@@ -202,18 +210,24 @@ export default function PositionSheet(props: Props) {
               of its own, so neither does this. */}
           {step !== "NONE" && (
             <div className="pr-qtyrow">
-              <span className="pr-sheet-pnl-label">
-                {step === "ADD"
-                  ? `Add to ${short ? "short" : "long"}`
-                  : "Units to exit"}
-              </span>
+              <div className="pr-qtyinfo">
+                <span className="pr-sheet-pnl-label">
+                  {step === "ADD"
+                    ? `Add to ${short ? "short" : "long"}`
+                    : "Units to exit"}
+                </span>
+                <span className="pr-sub">
+                  of {step === "EXIT" ? exitMax : held}
+                  {ltpKnown ? ` · ${money(qty * ltp)}` : ""}
+                </span>
+              </div>
               <div className="pr-qtyctl">
                 <button
                   onClick={() => setQty((n) => Math.max(1, n - 1))}
                   aria-label="Decrease quantity"
                   className="pressable"
                 >
-                  <FiMinus size={13} />
+                  <FiMinus size={15} />
                 </button>
                 <input
                   type="number"
@@ -236,13 +250,9 @@ export default function PositionSheet(props: Props) {
                   aria-label="Increase quantity"
                   className="pressable"
                 >
-                  <FiPlus size={13} />
+                  <FiPlus size={15} />
                 </button>
               </div>
-              <span className="pr-sub">
-                of {step === "EXIT" ? exitMax : held}
-                {ltpKnown ? ` · ${money(qty * ltp)}` : ""}
-              </span>
             </div>
           )}
 
@@ -255,9 +265,9 @@ export default function PositionSheet(props: Props) {
                 } else setStep("ADD");
               }}
               disabled={busy || !ltpKnown}
-              className="pr-action is-add pressable"
+              className={`pr-action is-add pressable ${step === "ADD" ? "is-armed" : ""}`}
             >
-              <FiArrowUp size={14} aria-hidden />{" "}
+              <FiArrowUp size={15} aria-hidden />{" "}
               {step === "ADD" ? `Add More ${qty}` : "Add More"}
             </button>
             <button
@@ -268,9 +278,9 @@ export default function PositionSheet(props: Props) {
                 } else setStep("EXIT");
               }}
               disabled={busy || !ltpKnown || (!canPartial && step !== "EXIT")}
-              className="pr-action is-exit pressable"
+              className={`pr-action is-exit pressable ${step === "EXIT" ? "is-armed" : ""}`}
             >
-              <FiArrowDown size={14} aria-hidden />{" "}
+              <FiArrowDown size={15} aria-hidden />{" "}
               {step === "EXIT" ? `Partial Exit ${qty}` : "Partial Exit"}
             </button>
           </div>
