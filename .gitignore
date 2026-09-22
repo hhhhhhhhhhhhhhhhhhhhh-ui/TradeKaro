@@ -20,6 +20,12 @@
 .DS_Store
 *.pem
 
+# Scratch files. Scripts written to run one command on the VPS, and the commit
+# message files used because PowerShell mangles quotes in `git commit -m`.
+# `git add -A` swept .tmp-install-nginx.sh into a commit once; this stops that.
+.tmp-*
+.git-commit-msg.txt
+
 # debug
 npm-debug.log*
 yarn-debug.log*
