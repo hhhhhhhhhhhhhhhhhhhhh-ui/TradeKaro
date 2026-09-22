@@ -40,6 +40,7 @@ export function onShutdown(close: () => void): () => void {
   if (!hooked && typeof process !== "undefined" && typeof process.on === "function") {
     hooked = true;
     const endAll = () => {
+      console.log(`[shutdown] SIGTERM received — closing ${closers.size} stream(s)`);
       // Iterate a copy: a closer that de-registers itself mutates the set.
       for (const close of [...closers]) {
         try {
@@ -49,11 +50,14 @@ export function onShutdown(close: () => void): () => void {
         }
       }
       closers.clear();
+      console.log("[shutdown] streams closed");
     };
     process.once("SIGTERM", endAll);
     process.once("SIGINT", endAll);
+    console.log("[shutdown] SIGTERM handler installed");
   }
   closers.add(close);
+  console.log(`[shutdown] closer registered (${closers.size} active stream(s))`);
   return () => {
     closers.delete(close);
   };
