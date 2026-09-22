@@ -39,10 +39,15 @@ trap 'rm -f "$RAW" "$ALLOW_TMP" "$GEO_TMP"' EXIT
 echo "==> fetching Cloudflare's published ranges"
 for family in ips-v4 ips-v6; do
     url="https://www.cloudflare.com/${family}"
-    if ! curl -fsS --max-time 20 "$url" >> "$RAW"; then
+    if ! list="$(curl -fsS --max-time 20 "$url")"; then
         echo "failed to fetch $url — nothing installed" >&2
         exit 1
     fi
+    # Printed, not appended with `>>`: Cloudflare's v4 list does not end in a
+    # newline, so appending the v6 list straight onto it fused the last IPv4
+    # range and the first IPv6 range into "131.0.72.0/222400:cb00::/32" and
+    # nginx refused the whole file. printf guarantees the separator.
+    printf '%s\n' "$list" >> "$RAW"
 done
 
 # Normalise: drop blanks and comments, keep one CIDR per line.
