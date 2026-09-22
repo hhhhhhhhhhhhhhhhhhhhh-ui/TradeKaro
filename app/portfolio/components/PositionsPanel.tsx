@@ -358,8 +358,19 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
     : null;
   const selPrice = selected ? priceOf(selected) : null;
   const rowCount = rows[tab].length;
-  // The reference prints an explicit sign with a plain hyphen-minus.
-  const plain = (v: number) => pnlSigned(v).replace("−", "-");
+  // The reference prints an explicit sign with a plain hyphen-minus — but only
+  // when there is a sign to print. A leg that is exactly flat is neither a gain
+  // nor a loss, so it gets no "+" and must not take the profit colour either.
+  const plain = (v: number) =>
+    v === 0 ? money(0, 2) : pnlSigned(v).replace("−", "-");
+  const toneClass = (v: number) =>
+    v > 0 ? "is-up" : v < 0 ? "is-down" : "is-flat";
+  const toneInk = (v: number) =>
+    v > 0
+      ? "rgb(var(--pr-up))"
+      : v < 0
+        ? "rgb(var(--pr-down))"
+        : "rgb(var(--pr-muted))";
 
   return (
     <>
@@ -384,14 +395,9 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
               <div className="pr-ledger-label">M2M</div>
               <div
                 className="pr-ledger-value is-signed"
-                style={{
-                  color:
-                    unrealized >= 0
-                      ? "rgb(var(--pr-up))"
-                      : "rgb(var(--pr-down))",
-                }}
+                style={{ color: toneInk(unrealized) }}
               >
-                {unrealized >= 0 ? "+" : "−"}
+                {unrealized === 0 ? null : unrealized > 0 ? "+" : "−"}
                 <span>₹</span>
                 <span>{num(Math.abs(unrealized), 2)}</span>
               </div>
@@ -468,12 +474,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
 
         <div className="pr-pnl">
           <div className="pr-pnl-label">Total P&amp;L</div>
-          <div
-            className="pr-pnl-value"
-            style={{
-              color: total >= 0 ? "rgb(var(--pr-up))" : "rgb(var(--pr-down))",
-            }}
-          >
+          <div className="pr-pnl-value" style={{ color: toneInk(total) }}>
             {rowCount ? plain(total) : "—"}
           </div>
         </div>
@@ -492,7 +493,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
         ) : tab === "CLOSED" ? (
           <div className="pr-list">
             {rows.CLOSED.map((c) => {
-              const up = c.netPnl >= 0;
+              const pnl = c.netPnl;
               const short = c.side === "SHORT";
               return (
                 <div key={c.key} className="pr-card">
@@ -502,7 +503,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                         <SideQty short={short} qty={c.qty} />
                       </div>
                       <div className="pr-right">
-                        <span className={`pr-time ${up ? "is-up" : "is-down"}`}>
+                        <span className={`pr-time ${toneClass(pnl)}`}>
                           {hhmmss(c.closedAt)}
                         </span>
                       </div>
@@ -514,13 +515,9 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                       <div className="pr-right">
                         <span
                           className="pr-delta"
-                          style={{
-                            color: up
-                              ? "rgb(var(--pr-up))"
-                              : "rgb(var(--pr-down))",
-                          }}
+                          style={{ color: toneInk(pnl) }}
                         >
-                          {plain(c.netPnl)}
+                          {plain(pnl)}
                         </span>
                       </div>
                     </div>
@@ -532,8 +529,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                       </div>
                       <div className="pr-right">
                         <span className="pr-sub">
-                          {" "}
-                          In: {money(c.avgEntry, 2)} | Out:{" "}
+                          In: {money(c.avgEntry, 2)} · Out:{" "}
                           {money(c.avgExit, 2)}
                         </span>
                       </div>
@@ -547,8 +543,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
           <div className="pr-list">
             {rows[tab as "POSITION" | "ACTIVE"].map((p) => {
               const { ltp, known } = priceOf(p);
-              const mtm = (ltp - p.avg) * p.qty;
-              const up = mtm >= 0;
+              const pnl = (ltp - p.avg) * p.qty;
               const short = p.qty < 0;
               return (
                 <div key={p.scrip} className="pr-card">
@@ -562,7 +557,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                         <SideQty short={short} qty={Math.abs(p.qty)} />
                       </div>
                       <div className="pr-right">
-                        <span className={`pr-time ${up ? "is-up" : "is-down"}`}>
+                        <span className={`pr-time ${toneClass(pnl)}`}>
                           {hhmmss(openedAt[legKey(p.scrip, p.product)])}
                         </span>
                       </div>
@@ -574,13 +569,9 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                       <div className="pr-right">
                         <span
                           className="pr-delta"
-                          style={{
-                            color: up
-                              ? "rgb(var(--pr-up))"
-                              : "rgb(var(--pr-down))",
-                          }}
+                          style={{ color: toneInk(pnl) }}
                         >
-                          {plain(mtm)}
+                          {plain(pnl)}
                         </span>
                       </div>
                     </div>
@@ -592,8 +583,7 @@ export default function PositionsPanel(props: { refreshKey?: number }) {
                       </div>
                       <div className="pr-right">
                         <span className="pr-sub">
-                          {" "}
-                          Avg: {money(p.avg, 2)} | LTP:{" "}
+                          Avg: {money(p.avg, 2)} · LTP:{" "}
                           {known ? money(ltp, 2) : "—"}
                         </span>
                       </div>

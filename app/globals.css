@@ -604,50 +604,61 @@ form > label {
    reference's computed styles, not eyeballed. */
 .pr {
   /* Light theme: the reference's structure and metrics, re-toned onto the
-     app's light slate surface so it blends instead of sitting as a dark slab. */
-  --pr-panel: 255 255 255;
-  --pr-sheet: 255 255 255;
-  --pr-raised: 241 243 247;
-  --pr-card: 247 248 250;
+     app's light slate surface so it blends instead of sitting as a dark slab.
+     Wherever the app already has a token, use that token: --pr-up/--pr-down are
+     --positive/--negative, --pr-raised is --muted, --pr-panel is --card,
+     --pr-edge is --border and --pr-accent is --brand. Borrowing the app's
+     palette instead of the reference's is what stops the surface reading as a
+     pasted-in widget. */
+  --pr-panel: 255 255 255; /* --card */
+  --pr-sheet: 255 255 255; /* --card */
+  --pr-raised: 241 243 247; /* --muted */
+  --pr-card: 247 248 250; /* --background */
   --pr-line: 226 232 240;
+  --pr-edge: 222 227 234; /* --border — surface outline + row hairlines */
   --pr-text: 51 65 85;
   --pr-strong: 15 23 42;
-  --pr-muted: 100 116 139;
-  --pr-sub: 100 116 139;
-  --pr-accent: 37 99 235;
+  --pr-muted: 71 85 105; /* --muted-foreground — slate-500 only reached 4.28:1 */
+  --pr-sub: 71 85 105; /* --muted-foreground */
+  --pr-accent: 15 118 110; /* --brand, so the active tab matches the nav */
   --pr-up: 4 120 87;
   --pr-down: 185 28 28;
   --pr-grab: 203 213 225;
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-variant-numeric: tabular-nums;
 }
-/* Dark theme: the reference terminal's own palette, measured off it. */
+/* Dark theme: this used to be the reference terminal's own navy palette, which
+   rendered as a blue slab on the app's neutral near-black page (#0a0d10).
+   Mapped onto the app's dark tokens instead, so it reads as the same product. */
 .dark .pr {
-  --pr-panel: 6 16 28; /* #06101c */
-  --pr-sheet: 18 30 44; /* #121e2c */
-  --pr-raised: 21 41 68; /* #152944 */
-  --pr-card: 14 30 48; /* #0e1e30 */
-  --pr-line: 26 42 58; /* #1a2a3a */
-  --pr-text: 224 225 221; /* #e0e1dd */
-  --pr-strong: 255 255 255;
-  --pr-muted: 119 141 169; /* #778da9 */
-  --pr-sub: 148 163 184; /* #94a3b8 */
-  --pr-accent: 59 130 246; /* #3b82f6 — tabs, Add More, bid/ask values */
-  --pr-up: 16 185 129; /* #10b981 */
-  --pr-down: 239 68 68; /* #ef4444 */
-  --pr-grab: 45 61 80; /* #2d3d50 */
+  --pr-panel: 19 24 28; /* --card */
+  --pr-sheet: 26 31 36; /* --muted, raised above the panel */
+  --pr-raised: 26 31 36; /* --muted */
+  --pr-card: 26 31 36; /* --muted — inset blocks */
+  --pr-line: 44 51 60; /* --border */
+  --pr-edge: 44 51 60; /* --border */
+  --pr-text: 203 213 225;
+  --pr-strong: 234 236 239; /* --foreground */
+  --pr-muted: 132 142 156; /* --muted-foreground */
+  --pr-sub: 132 142 156; /* --muted-foreground */
+  --pr-accent: 45 212 191; /* --brand */
+  --pr-up: 52 211 153; /* --positive */
+  --pr-down: 248 113 113; /* --negative */
+  --pr-grab: 45 61 80;
 }
 /* panel background — separate from .pr so the portalled sheet can take the
    palette without the panel's background colour */
 .pr-surface {
   background: rgb(var(--pr-panel));
   color: rgb(var(--pr-text));
-  border: 1px solid rgb(var(--pr-raised));
+  border: 1px solid rgb(var(--pr-edge));
   border-radius: 12px;
   overflow: hidden;
-  /* Reads as one large panel rather than a short card floating over a void.
-     Subtract the navbar + ticker above and the bottom-nav clearance below. */
-  min-height: calc(100dvh - 15rem);
+  /* No min-height. There used to be `calc(100dvh - 15rem)`, which manufactured
+     388px of empty panel on desktop and 198px on a phone — and on a 844px-tall
+     viewport it made the document 1021px, i.e. scrollable with nothing to
+     scroll to. A surface should be as tall as its contents; the empty state
+     already carries its own padding. */
 }
 
 /* ledger strip — 2×2 grid, collapsed until the header chevron opens it */
@@ -783,7 +794,7 @@ form > label {
   padding-bottom: 14px;
 }
 .pr-card {
-  border-bottom: 1px solid rgb(var(--pr-card));
+  border-bottom: 1px solid rgb(var(--pr-edge) / 0.6);
 }
 .pr-card-inner {
   display: block;
@@ -793,6 +804,19 @@ form > label {
   border: 0;
   border-radius: 0;
   text-align: left;
+}
+/* Rows open a detail sheet, so they need to look touchable. Scoped to the
+   <button> rows — the closed-round-trip rows are plain divs that don't open. */
+.pr-card-inner:is(button) {
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.pr-card-inner:is(button):hover {
+  background: rgb(var(--pr-card));
+}
+.pr-card-inner:is(button):focus-visible {
+  outline: 2px solid rgb(var(--pr-accent));
+  outline-offset: -2px;
 }
 .pr-row {
   display: flex;
@@ -807,6 +831,42 @@ form > label {
 }
 .pr-row-3 {
   margin-top: 2px;
+}
+
+/* ── wide layout ─────────────────────────────────────────────────────────────
+   From 1024px the surface is as wide as the navbar, so the three stacked lines
+   per leg become three columns rather than a phone list stretched across the
+   page. Pure CSS — the DOM stays exactly the reference's. */
+@media (min-width: 1024px) {
+  .pr-ledger {
+    grid-template-columns: repeat(4, 1fr);
+  }
+  .pr-card-inner {
+    display: grid;
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr) minmax(0, 1.3fr);
+    align-items: center;
+    gap: 18px;
+    padding: 12px 20px;
+  }
+  .pr-row,
+  .pr-row-1,
+  .pr-row-2,
+  .pr-row-3 {
+    margin: 0;
+    /* space-between rather than flex-start, so each column behaves like a table
+       cell — label at the left of the track, number at the right. Left-packing
+       them left the right two-thirds of every column empty. */
+    justify-content: space-between;
+    gap: 12px;
+  }
+  .pr-pnl {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    text-align: left;
+    margin-top: 16px;
+    padding: 14px 18px;
+  }
 }
 .pr-left {
   display: flex;
@@ -866,6 +926,12 @@ form > label {
   color: rgb(var(--pr-down));
   background: rgb(var(--pr-down) / 0.15);
 }
+/* A leg that is exactly flat is neither a gain nor a loss — without this it took
+   the green is-up badge and signalled a profit that wasn't there. */
+.pr-time.is-flat {
+  color: rgb(var(--pr-muted));
+  background: rgb(var(--pr-raised));
+}
 .pr-symbol {
   font-size: 15px;
   font-weight: 500;
@@ -892,9 +958,13 @@ form > label {
   color: rgb(var(--pr-muted));
 }
 .pr-search {
-  width: 100%;
+  /* display:block + auto width. A 100% width alongside 20px side margins
+     overflowed the surface by 40px, so the right edge of the field was being
+     clipped away by overflow:hidden. */
+  display: block;
+  width: auto;
   padding: 8px 12px;
-  margin: 0 20px 8px;
+  margin: 10px 20px 8px;
   border-radius: 8px;
   border: 1px solid rgb(var(--pr-line));
   background: rgb(var(--pr-card));
