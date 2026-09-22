@@ -92,6 +92,55 @@ sudo apt-get install -y certbot python3-certbot-nginx
 sudo certbot --nginx -d yourdomain.com
 ```
 
+### 5a. Cloudflare-only origin lock
+
+The site config ships with an origin lock and real-client-IP logging, and both
+depend on a generated file because Cloudflare's edge ranges change:
+
+```bash
+sudo bash /opt/tradekaro/deploy/refresh-cloudflare-ips.sh
+sudo systemctl reload nginx
+```
+
+That writes two snippets:
+
+| File                                     | What it is                                                                                                                                           |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/etc/nginx/snippets/cloudflare-only.conf` | `allow` for every Cloudflare range, then `deny all`. Included by the proxying locations, so the origin refuses anything that did not come via Cloudflare. |
+| `/etc/nginx/snippets/cloudflare-geo.conf`  | The same ranges as a `geo` block, so the log can tell a real Cloudflare edge from a direct connection and only believes `CF-Connecting-IP` when Cloudflare set it. |
+
+**Re-run it whenever Cloudflare changes its ranges.** A stale list either blocks
+your own CDN or leaves a hole in the lock. They publish at
+<https://www.cloudflare.com/ips/>, and the script reads exactly that.
+
+The ACME path is deliberately left outside the lock. Let's Encrypt validates from
+its own servers, which are not Cloudflare, so locking it would break every
+renewal about thirty days later.
+
+Why the logs look different now: the first field is the real visitor rather than
+a Cloudflare edge, and each line ends with `via=1 peer=<edge>` when the request
+came through Cloudflare, or `via=0 peer=<address>` when it did not. A `via=0`
+line is a direct hit on the origin — which the lock refuses, so it should be
+nothing but scanners.
+
+**Rollback** — make the origin public again without editing any config:
+
+```bash
+sudo rm /etc/nginx/snippets/cloudflare-only.conf
+sudo systemctl reload nginx
+```
+
+Leave `cloudflare-geo.conf` alone; the logging map needs it. An allow-list that
+is worth keeping is worth reviewing, so if you find yourself rolling back
+often, the range is probably wrong rather than the lock.
+
+⚠️ The lock also closes `http://<origin-ip>`, so the bare-IP fallback is gone.
+When DNS or the certificate is broken, reach the app over a tunnel instead:
+
+```bash
+ssh -L 8080:127.0.0.1:3000 root@<origin-ip>    # then browse http://localhost:8080
+```
+
 ### 6. Run the test suite against production (optional)
 
 ```bash
@@ -224,3 +273,4 @@ curl -fsS -H "x-dispatch-secret: $TRACKING_DISPATCH_SECRET" \
 | Conversions never leave the server   | No dispatch timer. `systemctl list-timers tradekaro-dispatch.timer` — nothing listed means it was never enabled.             |
 | The timer fires but always 401s      | `TRACKING_DISPATCH_SECRET` is missing or the app has not been restarted since it was added. See "If it 401s" above.          |
 | Unit file edited but nothing changed | systemd reads these into memory. `systemctl daemon-reload` after editing, and re-`install` after pulling a new version.      |
+| Every request returns 403            | The Cloudflare origin lock is refusing a client that is not Cloudflare — usually a stale range list, or a test that connected to the origin IP directly. See "Rollback" in §5a. |

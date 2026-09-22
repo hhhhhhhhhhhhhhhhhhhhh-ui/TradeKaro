@@ -114,6 +114,22 @@ systemctl restart tradekaro
 
 # --- nginx -------------------------------------------------------------------
 say "Configuring nginx for $DOMAIN"
+install -m 644 "$APP_DIR/deploy/nginx-tradekaro-locations.conf" \
+  /etc/nginx/snippets/tradekaro-locations.conf
+
+# Generate the Cloudflare ranges BEFORE nginx is tested. The site config
+# includes the geo block with a wildcard, which tolerates the file being
+# absent — but the logging map that reads $tk_edge does not, because an
+# undefined variable is a hard config error. Missing file means nginx will not
+# load at all.
+#
+# A failed fetch is not fatal here: the script still writes a geo block with
+# `default 0;`, so logging degrades to the TCP peer and the origin stays
+# UNLOCKED (the allow-list is only written from a successful fetch, since
+# deny-all with no allows would take the site down).
+bash "$APP_DIR/deploy/refresh-cloudflare-ips.sh" || \
+  say "WARNING: Cloudflare ranges unavailable — origin lock is OFF, logging uses the TCP peer"
+
 sed "s/YOUR_DOMAIN/$DOMAIN/g" "$APP_DIR/deploy/nginx-tradekaro.conf" \
   > /etc/nginx/sites-available/tradekaro
 ln -sf /etc/nginx/sites-available/tradekaro /etc/nginx/sites-enabled/tradekaro
