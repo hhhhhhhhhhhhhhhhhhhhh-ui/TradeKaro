@@ -24,10 +24,13 @@
  * `678beea` deploy (11:04:15 refused, process killed 11:04:24).
  *
  * Routes that hold a response open register a closer here. On SIGTERM they are
- * all ended, `server.close()` completes in milliseconds, and Next's own
- * `process.exit` runs. Our listener is registered on first use, i.e. *after*
- * Next's, which is the order we want: the listener closes first, then the
- * streams drain.
+ * all ended, `server.close()` completes, and Next's own `process.exit` runs. Our
+ * listener is registered on first use, i.e. *after* Next's, which is the order we
+ * want: the listener closes first, then the streams drain.
+ *
+ * Measured on the VPS with a live SSE client held open: SIGTERM to a stopped
+ * unit went from 30.0s (timed out, SIGKILLed, connection-refused throughout) to
+ * 0.06s, stopping and starting inside the same journal second.
  */
 const closers = new Set<() => void>();
 let hooked = false;
@@ -37,10 +40,13 @@ let hooked = false;
  * Returns a de-registration function; calling it is safe at any time.
  */
 export function onShutdown(close: () => void): () => void {
-  if (!hooked && typeof process !== "undefined" && typeof process.on === "function") {
+  if (
+    !hooked &&
+    typeof process !== "undefined" &&
+    typeof process.on === "function"
+  ) {
     hooked = true;
     const endAll = () => {
-      console.log(`[shutdown] SIGTERM received — closing ${closers.size} stream(s)`);
       // Iterate a copy: a closer that de-registers itself mutates the set.
       for (const close of [...closers]) {
         try {
@@ -50,14 +56,11 @@ export function onShutdown(close: () => void): () => void {
         }
       }
       closers.clear();
-      console.log("[shutdown] streams closed");
     };
     process.once("SIGTERM", endAll);
     process.once("SIGINT", endAll);
-    console.log("[shutdown] SIGTERM handler installed");
   }
   closers.add(close);
-  console.log(`[shutdown] closer registered (${closers.size} active stream(s))`);
   return () => {
     closers.delete(close);
   };
