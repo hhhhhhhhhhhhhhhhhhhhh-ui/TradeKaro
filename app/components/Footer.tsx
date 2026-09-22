@@ -55,7 +55,7 @@ export default function Footer() {
 
         <div className="mt-5 flex flex-col gap-1 text-[11px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
-            © {new Date().getFullYear()} TradeStox. Market data via Upstox.
+            © {new Date().getFullYear()} TradeStox. All rights reserved.
           </span>
           <span>
             Prices are indicative and may differ from the exchange feed.

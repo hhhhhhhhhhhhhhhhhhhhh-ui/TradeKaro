@@ -116,7 +116,7 @@ export function LiveRelianceCard() {
   return (
     <div className="flex flex-col gap-1 pb-1">
       <span className="font-mono text-xs text-muted-foreground">
-        RELIANCE · LIVE UPSTOX
+        RELIANCE · LIVE
       </span>
       <span className="font-mono text-lg font-semibold text-foreground">
         ₹{Number(t.ltp).toLocaleString("en-IN", { maximumFractionDigits: 2 })}

@@ -16,7 +16,7 @@ export default function HighChart(props: any) {
         </span>
         {liveLtp ? (
           <span className="text-xs font-mono text-foreground/60">
-            LIVE ₹{Number(liveLtp).toFixed(2)} · UPSTOX
+            LIVE ₹{Number(liveLtp).toFixed(2)}
           </span>
         ) : null}
       </div>

@@ -60,7 +60,7 @@ export default function OptionChain(props: {
       } catch {
         /* offline — rows stay empty, err shown below */
         if (!stop && expiries.length === 0)
-          setErr("Expiries unavailable — Upstox offline");
+          setErr("Expiries unavailable — feed offline");
       }
     }
     setExpiries([]);
@@ -90,7 +90,7 @@ export default function OptionChain(props: {
         if (stop) return;
         if (!r.ok) {
           if (!quiet) {
-            setErr(j.error || "Live chain unavailable — Upstox offline");
+            setErr(j.error || "Live chain unavailable — feed offline");
             setRows([]);
           }
         } else {
@@ -121,7 +121,7 @@ export default function OptionChain(props: {
       } catch {
         if (!stop && !quiet) {
           setRows([]);
-          setErr("Chain unavailable — Upstox offline");
+          setErr("Chain unavailable — feed offline");
         }
       } finally {
         if (!stop && !quiet) setLoading(false);

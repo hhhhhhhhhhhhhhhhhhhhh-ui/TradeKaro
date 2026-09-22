@@ -582,7 +582,7 @@ export default function LightweightMainChart({ symbol }: { symbol: string }) {
   if (loading)
     return (
       <div className="flex h-[420px] items-center justify-center text-[13px] text-muted-foreground">
-        LOADING {sym} · UPSTOX…
+        LOADING {sym}…
       </div>
     );
   if (err || !candles.length)
@@ -719,7 +719,7 @@ export default function LightweightMainChart({ symbol }: { symbol: string }) {
       </div>
       {loading ? (
         <div className="flex h-[420px] items-center justify-center text-[13px] text-muted-foreground">
-          LOADING {sym} · {tf.toUpperCase()} · UPSTOX…
+          LOADING {sym} · {tf.toUpperCase()}…
         </div>
       ) : err || !candles.length ? (
         <div className="flex h-[220px] items-center justify-center px-4 text-center text-[13px] text-muted-foreground">

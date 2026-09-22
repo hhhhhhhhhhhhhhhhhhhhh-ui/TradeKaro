@@ -53,7 +53,7 @@ export default function MarketStatusRow() {
             {st.label}
           </span>
           <span className="hidden sm:inline text-[11px] font-mono text-foreground/40">
-            · UPSTOX {live ? "LIVE" : "OFFLINE"}
+            · MARKET {live ? "LIVE" : "OFFLINE"}
           </span>
         </div>
         <div

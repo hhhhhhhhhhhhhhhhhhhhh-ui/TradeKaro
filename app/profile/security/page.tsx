@@ -246,7 +246,7 @@ export default function SecurityPage() {
                 <Row
                   icon={<FiKey size={17} aria-hidden />}
                   label="Broker token"
-                  sub="Upstox access token used for quotes and orders"
+                  sub="Market data token used for quotes and charts"
                   badge={
                     <Badge tone={tokenOk ? "positive" : "negative"}>
                       <Dot />

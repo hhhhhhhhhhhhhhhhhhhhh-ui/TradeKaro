@@ -6,7 +6,6 @@ import {
   FiCpu,
   FiLayers,
   FiFilter,
-  FiLock,
   FiPlus,
   FiShield,
   FiStar,
@@ -23,6 +22,7 @@ import {
   LiveWatchlist,
 } from "@/app/components/landing/LiveLandingBlocks";
 import LiveMarketStrip from "./LiveMarketStrip";
+import NewsFeed from "@/app/dashboard/sections/NewsFeed";
 
 // ── layout helpers ──────────────────────────────────────────────────────────
 
@@ -77,7 +77,7 @@ function IconTile({ Icon }: { Icon: typeof FiZap }) {
 }
 
 const PRIMARY =
-  "inline-flex items-center justify-center gap-2 rounded-md border border-foreground bg-foreground px-6 py-3.5 text-[13.5px] font-semibold text-background transition-colors hover:bg-foreground/90";
+  "inline-flex items-center justify-center gap-2 rounded-md bg-brand px-7 py-3.5 text-[13.5px] font-semibold text-brand-foreground transition-colors hover:bg-brand/90";
 const SECONDARY =
   "inline-flex items-center justify-center gap-2 rounded-md border border-border bg-card px-6 py-3.5 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-muted";
 
@@ -86,7 +86,7 @@ const SECONDARY =
 const FACTS = [
   { value: "NSE · BSE · MCX", label: "Markets covered" },
   { value: "2,000+", label: "Tradable instruments" },
-  { value: "Live", label: "Upstox market feed" },
+  { value: "Live", label: "Real-time market feed" },
   { value: "Up to 20x", label: "Intraday leverage" },
 ];
 
@@ -208,8 +208,16 @@ const FAQ = [
   },
   {
     q: "Where does the market data come from?",
-    a: "Live quotes, option chains and candles are sourced from Upstox and served through a single shared board, so every visitor sees the same price at the same moment.",
+    a: "Live quotes, option chains and candles come straight from the exchange feed and are served through a single shared board, so every visitor sees the same price at the same moment.",
   },
+];
+
+// India does not have one trading session — each venue keeps its own hours, and
+// commodities run eight hours past the equity close.
+const SESSIONS = [
+  { name: "NSE cash", note: "Equities · IST", time: "09:15 – 15:30" },
+  { name: "NFO", note: "Index and stock options · IST", time: "09:15 – 15:40" },
+  { name: "MCX", note: "Commodities · IST", time: "09:00 – 23:30" },
 ];
 
 // ── page ────────────────────────────────────────────────────────────────────
@@ -218,45 +226,51 @@ export default function HomeView() {
   return (
     <div className="pb-8">
       {/* ── HERO ───────────────────────────────────────────────────────── */}
-      <Band className="pt-12 sm:pt-16 lg:pt-20">
-        <span className="eyebrow">Live NSE · BSE · MCX</span>
+      <section className="relative overflow-hidden px-4 pt-12 sm:px-6 sm:pt-16 lg:px-8 lg:pt-20">
+        {/* Brand wash. Decoration only — aria-hidden, no pointer events, and it
+            fades out well before it reaches any text, so nothing here depends
+            on a colour it is sitting on. A flat page is what makes a terminal
+            look like a template. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 -top-40 h-[560px]"
+          style={{
+            background:
+              "radial-gradient(54% 50% at 14% 0%, rgb(var(--brand) / 0.16), transparent 70%), radial-gradient(38% 42% at 92% 6%, rgb(var(--brand-lime) / 0.13), transparent 72%)",
+          }}
+        />
 
-        <h1 className="mt-5 max-w-5xl text-[40px] font-bold leading-[0.95] tracking-tighter text-foreground sm:text-6xl lg:text-7xl xl:text-[84px]">
-          Every tick.
-          <br />
-          Every strike.
-          <br />
-          <span className="text-muted-foreground">One terminal.</span>
-        </h1>
+        <div className="relative mx-auto max-w-7xl">
+          <span className="inline-flex items-center gap-2 rounded-full border border-positive/30 bg-card px-3 py-1.5 text-[11.5px] font-semibold uppercase tracking-wide text-positive">
+            <span className="relative flex h-2 w-2" aria-hidden>
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-positive opacity-60" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-positive" />
+            </span>
+            Live · NSE · BSE · MCX
+          </span>
 
-        <p className="mt-6 max-w-xl text-[15px] leading-relaxed text-muted-foreground sm:mt-8 sm:text-base">
-          Live NSE, BSE and MCX data, a full option chain with Greeks, and an
-          order desk built for speed. Everything a trading day needs, in one
-          place.
-        </p>
+          <h1 className="mt-6 max-w-5xl text-[42px] font-bold leading-[0.95] tracking-tighter text-foreground sm:text-6xl lg:text-7xl xl:text-[86px]">
+            The whole Indian market.
+            <br />
+            <span className="text-brand">One account.</span>
+          </h1>
 
-        <div className="mt-8 flex flex-col gap-3 sm:mt-10 sm:flex-row">
-          <NavTransition href="/signup" className={PRIMARY}>
-            Open an account
-          </NavTransition>
-          <NavTransition href="/stocks" className={SECONDARY}>
-            Explore the market
-          </NavTransition>
+          <p className="mt-6 max-w-2xl text-[15.5px] leading-relaxed text-muted-foreground sm:mt-8 sm:text-[17px]">
+            Equities, options and commodities on live exchange prices — with
+            real market depth, an option chain that keeps up, and an order desk
+            that never makes you wait.
+          </p>
+
+          <div className="mt-9 flex flex-col gap-3 sm:mt-11 sm:flex-row">
+            <NavTransition href="/signup" className={PRIMARY}>
+              Open an account
+            </NavTransition>
+            <NavTransition href="/stocks" className={SECONDARY}>
+              Explore the market
+            </NavTransition>
+          </div>
         </div>
-
-        <ul className="mt-8 flex flex-wrap items-center gap-x-6 gap-y-3 text-[12.5px] text-muted-foreground sm:mt-10">
-          {[
-            { Icon: FiZap, text: "Live Upstox feed" },
-            { Icon: FiClock, text: "Commodities until 23:30 IST" },
-            { Icon: FiLock, text: "Withdrawals to your own account" },
-          ].map(({ Icon, text }) => (
-            <li key={text} className="flex items-center gap-2">
-              <Icon size={14} strokeWidth={1.8} aria-hidden />
-              {text}
-            </li>
-          ))}
-        </ul>
-      </Band>
+      </section>
 
       {/* ── LIVE LEVELS ────────────────────────────────────────────────── */}
       <Band className="mt-12 sm:mt-16">
@@ -399,7 +413,7 @@ export default function HomeView() {
             <div key={label} className="broker-card p-5 sm:p-6">
               <IconTile Icon={Icon} />
               <div className="mt-4 flex items-baseline gap-2">
-                <span className="display-num text-3xl font-bold tracking-tight text-foreground">
+                <span className="display-num text-3xl font-bold tracking-tight text-brand">
                   {value}
                 </span>
                 <span className="text-[12.5px] font-medium text-muted-foreground">
@@ -416,7 +430,10 @@ export default function HomeView() {
 
       {/* ── START ──────────────────────────────────────────────────────── */}
       <Band className="mt-16 border-t border-border pt-16 sm:mt-24 sm:pt-24">
-        <Head eyebrow="Getting started" title="Up and running in three steps." />
+        <Head
+          eyebrow="Getting started"
+          title="Up and running in three steps."
+        />
 
         <div className="divide-y divide-border border-t border-border">
           {STEPS.map((s) => (
@@ -441,6 +458,55 @@ export default function HomeView() {
           <NavTransition href="/signup" className={PRIMARY}>
             Create your account
           </NavTransition>
+        </div>
+      </Band>
+
+      {/* ── NEWS + SESSIONS ────────────────────────────────────────────── */}
+      <Band className="mt-16 border-t border-border pt-16 sm:mt-24 sm:pt-24">
+        <Head
+          eyebrow="Market news"
+          title="Filings the moment they land."
+          lead="Exchange announcements as they are published, so you are reading the news rather than yesterday's headline."
+        />
+
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
+          <div className="lg:col-span-2">
+            <NewsFeed />
+          </div>
+
+          <div className="broker-card p-5 sm:p-6">
+            <div className="eyebrow">Market hours</div>
+            <p className="mb-4 mt-2 text-[13.5px] leading-relaxed text-muted-foreground">
+              India has three sessions, not one. Commodities keep trading eight
+              hours after the equity close.
+            </p>
+            <div className="divide-y divide-border">
+              {SESSIONS.map((s) => (
+                <div
+                  key={s.name}
+                  className="flex items-center justify-between gap-3 py-3"
+                >
+                  <div className="min-w-0">
+                    <div className="text-[13.5px] font-medium text-foreground">
+                      {s.name}
+                    </div>
+                    <div className="truncate text-[11.5px] text-muted-foreground">
+                      {s.note}
+                    </div>
+                  </div>
+                  <span className="display-num shrink-0 text-[12.5px] font-semibold text-brand">
+                    {s.time}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <NavTransition
+              href="/commodities"
+              className="mt-5 inline-flex w-full items-center justify-center rounded-md border border-border bg-background px-4 py-2.5 text-[12.5px] font-semibold text-foreground transition-colors hover:bg-muted"
+            >
+              See commodity contracts
+            </NavTransition>
+          </div>
         </div>
       </Band>
 
@@ -470,15 +536,25 @@ export default function HomeView() {
 
       {/* ── CLOSING ────────────────────────────────────────────────────── */}
       <Band className="mt-16 pb-4 sm:mt-24">
-        <div className="rounded-2xl bg-foreground px-6 py-12 text-background sm:px-12 sm:py-16">
-          <h2 className="max-w-2xl text-3xl font-bold leading-[1.1] tracking-tight sm:text-4xl md:text-[42px]">
+        <div className="relative overflow-hidden rounded-2xl bg-foreground px-6 py-12 text-background sm:px-12 sm:py-16">
+          {/* Brand wash. Decoration only — the panel's ink is set by
+              text-background on the parent, so nothing here can affect it. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "radial-gradient(58% 80% at 88% 8%, rgb(var(--brand) / 0.38), transparent 68%), radial-gradient(40% 60% at 4% 100%, rgb(var(--brand-lime) / 0.14), transparent 70%)",
+            }}
+          />
+          <h2 className="relative max-w-2xl text-3xl font-bold leading-[1.1] tracking-tight sm:text-4xl md:text-[42px]">
             Your next trade is two minutes away.
           </h2>
-          <p className="mt-4 max-w-xl text-[14.5px] leading-relaxed text-background/70">
+          <p className="relative mt-4 max-w-xl text-[14.5px] leading-relaxed text-background/70">
             Open the account, add funds when you are ready, and start trading the
             live market.
           </p>
-          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          <div className="relative mt-8 flex flex-col gap-3 sm:flex-row">
             <NavTransition
               href="/signup"
               className="inline-flex items-center justify-center rounded-md bg-background px-6 py-3.5 text-[13.5px] font-semibold text-foreground transition-colors hover:bg-background/90"

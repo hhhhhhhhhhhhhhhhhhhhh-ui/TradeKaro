@@ -91,7 +91,7 @@ export default function OptionsPage() {
           <div>
             <div className="eyebrow flex items-center gap-2">
               <span className={`live-dot ${live ? "" : "opacity-40"}`} />
-              Options desk {live ? "· live Upstox" : "· offline"}
+              Options desk {live ? "· live" : "· offline"}
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight mt-1">
               Option chain

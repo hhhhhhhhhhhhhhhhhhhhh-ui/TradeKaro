@@ -58,7 +58,7 @@ export default function StatusBar() {
                 : "Live feed unavailable — showing delayed snapshot prices"
             }
           >
-            UPSTOX {live ? "· LIVE" : "· DELAYED"}
+            MARKET {live ? "· LIVE" : "· DELAYED"}
           </span>
           <span className="hidden sm:inline">NSE · BSE</span>
         </div>
