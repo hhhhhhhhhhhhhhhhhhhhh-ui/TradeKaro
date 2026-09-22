@@ -551,8 +551,8 @@ export default function HomeView() {
             Your next trade is two minutes away.
           </h2>
           <p className="relative mt-4 max-w-xl text-[14.5px] leading-relaxed text-background/70">
-            Open the account, add funds when you are ready, and start trading the
-            live market.
+            Open the account, add funds when you are ready, and start trading
+            the live market.
           </p>
           <div className="relative mt-8 flex flex-col gap-3 sm:flex-row">
             <NavTransition
