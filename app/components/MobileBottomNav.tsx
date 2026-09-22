@@ -106,7 +106,7 @@ export default function MobileBottomNav() {
           margin and read as a widget parked on the page rather than the edge of
           the app. Edge to edge, all five targets share the whole width and the
           thumb never has to aim inward. */}
-      <div className="pointer-events-auto w-full border-t border-border bg-card/95 pb-1.5 backdrop-blur-xl shadow-[0_-10px_34px_-14px_rgba(0,0,0,0.72)]">
+      <div className="pointer-events-auto w-full border-t border-border bg-card/95 pb-1 backdrop-blur-xl shadow-[0_-10px_34px_-14px_rgba(0,0,0,0.72)]">
         <div className="h-[2px] w-full brand-gradient" />
         <div
           className={
@@ -121,7 +121,7 @@ export default function MobileBottomNav() {
                   key={href}
                   href={href}
                   aria-current={active ? "page" : undefined}
-                  className="relative flex min-h-[64px] flex-col items-center justify-end gap-1 pb-2 active:scale-95 transition-transform"
+                  className="relative flex min-h-[52px] flex-col items-center justify-end gap-0.5 pb-1 active:scale-95 transition-transform"
                 >
                   {/* Raised with a TRANSFORM, not a margin. A negative margin
                       would lift the label with it and knock it off the
@@ -129,13 +129,13 @@ export default function MobileBottomNav() {
                       keycap only, so it pokes above the bar while every label
                       still lines up. */}
                   <span
-                    className={`flex h-12 w-12 -translate-y-3 items-center justify-center rounded-2xl transition-all ${
+                    className={`flex h-9 w-9 -translate-y-2 items-center justify-center rounded-2xl transition-all ${
                       active
                         ? "bg-positive text-positive-foreground shadow-[0_12px_26px_-10px_rgba(38,166,154,0.9)]"
                         : "bg-foreground text-background shadow-[0_12px_24px_-12px_rgba(0,0,0,0.9)]"
                     }`}
                   >
-                    <Icon size={21} strokeWidth={2.2} />
+                    <Icon size={19} strokeWidth={2.2} />
                   </span>
                   <span
                     className={`text-[10px] font-semibold tracking-[0.05em] ${
@@ -152,19 +152,19 @@ export default function MobileBottomNav() {
                 key={href}
                 href={href}
                 aria-current={active ? "page" : undefined}
-                className="group relative flex min-h-[64px] flex-col items-center justify-end gap-1 pb-2 active:scale-95 transition-transform"
+                className="group relative flex min-h-[52px] flex-col items-center justify-end gap-0.5 pb-1 active:scale-95 transition-transform"
               >
                 {/* One indicator, not two: a filled pill behind the icon and the
                     label taking the active colour. This replaces the old top
                     hairline, which sat under the browser's own chrome and was
                     easy to miss. */}
                 <span
-                  className={`relative flex h-8 w-[52px] items-center justify-center rounded-full transition-colors ${
+                  className={`relative flex h-7 w-[48px] items-center justify-center rounded-full transition-colors ${
                     active ? "bg-positive/12" : "group-hover:bg-muted/70"
                   }`}
                 >
                   <Icon
-                    size={20}
+                    size={19}
                     strokeWidth={active ? 2.4 : 1.8}
                     className={active ? "text-positive" : "text-foreground/55"}
                   />

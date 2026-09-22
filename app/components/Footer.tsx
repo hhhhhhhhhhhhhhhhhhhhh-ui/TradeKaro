@@ -20,13 +20,13 @@ export default function Footer() {
   const hasSession = useHasSession();
   return (
     <footer className="border-t border-border">
-      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex items-center gap-2.5">
             <img
               src="/TradeStoxLogo.png"
               alt=""
-              className="h-8 w-8 rounded-lg"
+              className="h-7 w-7 rounded-lg"
             />
             <div>
               <div className="text-[14px] font-semibold tracking-tight">
@@ -39,7 +39,7 @@ export default function Footer() {
           </div>
           <nav
             aria-label="Footer"
-            className="flex flex-wrap gap-x-5 gap-y-2 text-[12.5px]"
+            className="flex flex-wrap gap-x-4 gap-y-1.5 text-[12px]"
           >
             {LINKS.filter((l) => !l.auth || hasSession).map((l) => (
               <NavTransition
@@ -53,7 +53,7 @@ export default function Footer() {
           </nav>
         </div>
 
-        <div className="mt-6 flex flex-col gap-1 text-[11px] text-muted-foreground/70 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-5 flex flex-col gap-1 text-[11px] text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
           <span>
             © {new Date().getFullYear()} TradeStox. Market data via Upstox.
           </span>

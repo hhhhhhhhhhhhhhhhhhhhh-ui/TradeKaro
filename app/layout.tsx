@@ -102,7 +102,7 @@ export default function RootLayout({
             </HideOnAdmin>
             <AdminBanner />
             <ClientHeartbeat />
-            <main className="flex-grow pb-[112px] md:pb-12 scroll-mt-20">
+            <main className="flex-grow pb-[96px] md:pb-12 scroll-mt-20">
               {children}
             </main>
             <HideOnAdmin>

@@ -19,7 +19,7 @@ export default function Hamburger() {
   }, [isOpen, handleClickOutside]);
 
   let dropdownClass =
-    "block px-4 py-2 text-[13px] hover:bg-muted transition-colors rounded-md mx-1";
+    "block px-4 py-1.5 text-[13px] hover:bg-muted transition-colors rounded-md mx-1";
 
   // Grouped, and deliberately WITHOUT the three destinations that sit in the
   // bottom dock (Positions, Watchlist, Options). The drawer used to repeat
