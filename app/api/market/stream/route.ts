@@ -5,6 +5,7 @@ import {
   feedSubscribe,
   feedHealth,
 } from "@/app/lib/feed";
+import { onShutdown } from "@/app/lib/shutdown";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,8 @@ export async function GET(req: NextRequest) {
   let unsub: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let closed = false;
+  // Hoisted out of start() so cancel() can share the one teardown.
+  let teardown: (() => void) | null = null;
 
   const stream = new ReadableStream({
     start(controller) {
@@ -41,9 +44,11 @@ export async function GET(req: NextRequest) {
           cleanup();
         }
       };
+      let unregister: (() => void) | null = null;
       const cleanup = () => {
         if (closed) return;
         closed = true;
+        unregister?.();
         unsub?.();
         release?.();
         if (heartbeat) clearInterval(heartbeat);
@@ -53,6 +58,11 @@ export async function GET(req: NextRequest) {
           /* already closed */
         }
       };
+      teardown = cleanup;
+      // This stream never ends on its own, so it must be ended explicitly when
+      // the process is asked to stop — otherwise it holds server.close() open
+      // for systemd's whole TimeoutStopSec while nginx 502s. See lib/shutdown.
+      unregister = onShutdown(cleanup);
 
       release = feedAcquire(symbols);
       send("hello", { feed: feedHealth(), count: symbols.length });
@@ -75,10 +85,7 @@ export async function GET(req: NextRequest) {
       req.signal.addEventListener("abort", cleanup);
     },
     cancel() {
-      closed = true;
-      unsub?.();
-      release?.();
-      if (heartbeat) clearInterval(heartbeat);
+      teardown?.();
     },
   });
 
