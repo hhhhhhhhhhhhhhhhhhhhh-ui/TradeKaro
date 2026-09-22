@@ -40,7 +40,7 @@ trap 'rm -f "$TMP"' EXIT
     echo "#   https://www.cloudflare.com/ips/"
     echo
 
-    for family in iv4 iv6; do
+    for family in ips-v4 ips-v6; do
         url="https://www.cloudflare.com/${family}"
         if ! list="$(curl -fsS --max-time 20 "$url")"; then
             echo "failed to fetch $url" >&2
