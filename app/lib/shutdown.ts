@@ -72,7 +72,8 @@ function endAll() {
 /** Install the process-level handlers. Idempotent. */
 export function installShutdownHook(): void {
   if (hooked) return;
-  if (typeof process === "undefined" || typeof process.on !== "function") return;
+  if (typeof process === "undefined" || typeof process.on !== "function")
+    return;
   hooked = true;
   process.once("SIGTERM", endAll);
   process.once("SIGINT", endAll);
