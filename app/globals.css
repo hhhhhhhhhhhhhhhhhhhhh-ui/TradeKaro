@@ -766,7 +766,7 @@ form > label {
 
 /* total P&L */
 .pr-pnl {
-  margin: 14px 20px 0;
+  margin: 10px 20px 0;
   padding: 16px;
   border-radius: 10px;
   background: rgb(var(--pr-card));
@@ -864,7 +864,7 @@ form > label {
     align-items: baseline;
     justify-content: space-between;
     text-align: left;
-    margin-top: 16px;
+    margin-top: 12px;
     padding: 14px 18px;
   }
 }

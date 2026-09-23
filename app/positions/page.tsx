@@ -16,18 +16,15 @@ export default function PositionsPage() {
        /watchlist, /ledger, /options). This page was the only one on max-w-4xl,
        which left it 320px narrower than the chrome above it and floating in
        gutters no other page had. That mismatch is most of what made it read as
-       an embedded card rather than the page itself. pt-8 because <main> sits
-       directly under the ticker and the surface needs to clear it. */
-    <div className="px-4 pt-8 sm:px-6 lg:px-8">
+       an embedded card rather than the page itself.
+
+       No visible page heading: the tab row already names the three views and
+       carries their counts, so a title above it only pushed the Total P&L down
+       the page. The h1 stays for screen readers and SEO — it is sr-only, so it
+       costs no vertical space. pt-4 is just enough to clear the ticker. */
+    <div className="px-4 pt-4 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-4">
-          <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            Positions
-          </h1>
-          <p className="mt-1 text-[13px] text-muted-foreground">
-            Open holdings, intraday legs and closed round-trips.
-          </p>
-        </div>
+        <h1 className="sr-only">Positions</h1>
         <PositionsPanel />
       </div>
     </div>
