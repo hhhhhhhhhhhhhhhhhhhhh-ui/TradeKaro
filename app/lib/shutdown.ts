@@ -12,18 +12,15 @@
  *     process.exit(143);
  *
  * `server.close()` stops accepting new connections *immediately* but only calls
- * back once every existing connection has ended. Two kinds of connection never
- * end on their own, and `closeAllConnections()` is dev-only — so in production
- * the callback never fired, `process.exit(143)` was never reached, and systemd
- * escalated to SIGKILL after the full 30s `TimeoutStopSec`.
+ * back once every existing connection has ended. Two things never end on their
+ * own, and `closeAllConnections()` is dev-only — so in production the callback
+ * never fired, `process.exit(143)` was never reached, and systemd escalated to
+ * SIGKILL after the full 30s `TimeoutStopSec`:
  *
  *   1. the market SSE streams, which are open by design; and
- *   2. nginx's idle upstream keep-alive sockets. `ss -tn state established
- *      '( sport = :3000 )'` showed 2 idle connections after three
- *      Cloudflare-proxied requests, and a restart then measured 30.13s. One idle
- *      socket pins the whole timeout — `server.close()` waits for idle sockets as
- *      well as busy ones, and Node's `server.closeIdleConnections()` (the right
- *      tool) is never called by Next outside dev.
+ *   2. nginx's idle upstream keep-alive sockets — measured 3 idle connections on
+ *      :3000 after five Cloudflare-proxied requests, and a restart that then took
+ *      30.13s. `server.close()` waits for idle sockets as well as busy ones.
  *
  * All 30 of those seconds were downtime rather than a grace period: the listener
  * was already closed from the instant SIGTERM landed, so nginx got
@@ -31,8 +28,18 @@
  * to every visitor. Confirmed in `/var/log/nginx/error.log` during the `678beea`
  * deploy (11:04:15 refused, killed 11:04:24, SIGTERM at the top of that window).
  *
- * So: end the registered streams, close the idle sockets, and keep a hard
- * backstop so no other handle type can pin the timeout again.
+ * So this does two things: ends the registered streams (a direct curl with one
+ * stream open then exits in 0.06s) and, because streams are only half the story,
+ * caps the whole stop at 1.5s so nothing else can pin the timeout again.
+ *
+ * Measured on the VPS, worst case (idle keep-alive sockets *and* a live SSE
+ * client): 30.0s + SIGKILL  →  1.56s, clean stop, no timeout.
+ *
+ * ⚠️ Tried and removed: walking `process._getActiveHandles()` for anything
+ * exposing `closeIdleConnections()`. On Node 24 here it never reached the server
+ * — the stop was 1.56s with it and without it — so it was deleted rather than left
+ * in as folklore. The backstop is what actually bounds the stop. Don't re-add it
+ * without measuring a difference.
  *
  * ⚠️ `installShutdownHook()` must be called at boot from `instrumentation.ts`,
  * not lazily. With keep-alive sockets but no SSE client connected, no route would
@@ -41,28 +48,6 @@
  */
 const closers = new Set<() => void>();
 let hooked = false;
-
-/**
- * Best-effort close of idle keep-alive sockets.
- *
- * A route has no supported way to reach the HTTP server object, so walk the
- * active handles. Internal API, hence the guards — the backstop below covers a
- * miss, so failing silently here is fine.
- */
-function closeIdleSockets() {
-  try {
-    const handles = (
-      process as unknown as { _getActiveHandles?: () => unknown[] }
-    )._getActiveHandles?.();
-    for (const h of handles ?? []) {
-      const fn = (h as { closeIdleConnections?: () => void })
-        ?.closeIdleConnections;
-      if (typeof fn === "function") fn.call(h);
-    }
-  } catch {
-    /* the backstop below covers us */
-  }
-}
 
 function endAll() {
   // Iterate a copy: a closer that de-registers itself mutates the set.
@@ -74,28 +59,20 @@ function endAll() {
     }
   }
   closers.clear();
-  closeIdleSockets();
-  // A stream's socket only counts as idle a tick after its response has ended, so
-  // the sweep above runs too early to reap the SSE connections it just closed.
-  // Sweep again shortly after — when that works, Next's own clean exit wins the
-  // race and the backstop below never fires.
-  for (const ms of [50, 250, 600]) {
-    setTimeout(closeIdleSockets, ms).unref();
-  }
 
   // Hard backstop. The listener stopped accepting the instant SIGTERM landed, so
   // every millisecond from here is a 502 for a real visitor. Cap the wait instead
   // of sitting out TimeoutStopSec and being SIGKILLed — which is what made every
   // deploy a 30s outage. unref() so that if Next's own clean exit wins the race,
-  // this never fires.
+  // this never fires. In-flight responses have had the whole SIGTERM→here window
+  // plus 1.5s to finish, and nothing new can arrive because the listener is shut.
   setTimeout(() => process.exit(0), 1500).unref();
 }
 
 /** Install the process-level handlers. Idempotent. */
 export function installShutdownHook(): void {
   if (hooked) return;
-  if (typeof process === "undefined" || typeof process.on !== "function")
-    return;
+  if (typeof process === "undefined" || typeof process.on !== "function") return;
   hooked = true;
   process.once("SIGTERM", endAll);
   process.once("SIGINT", endAll);
