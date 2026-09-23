@@ -26,6 +26,10 @@
 .tmp-*
 .git-commit-msg.txt
 
+# The sales / pitch page lives in its own repository (sales/.git) and is
+# published separately from this app. Keep it out of this repo entirely.
+/sales/
+
 # debug
 npm-debug.log*
 yarn-debug.log*
