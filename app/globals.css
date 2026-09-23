@@ -1429,3 +1429,65 @@ form > label {
   appearance: none;
   margin: 0;
 }
+
+/* ─── sileo toasts ───────────────────────────────────────────────────────────
+   Every toast — order placed, position squared off, market closed, insufficient
+   funds — used to be a near-black pill in BOTH themes: a hard black blob on the
+   light page, and on the dark page a slightly-lighter-than-the-page blob with no
+   edge at all. The Toaster passed `fill: "#171717"` to force that, and its
+   accompanying `styles{}` block was dead config — those classes use Tailwind v4's
+   suffix-! syntax (`text-white!`) on a v3 project, so nothing was generated and
+   the title silently fell back to sileo's own oklch green.
+
+   Re-toned onto the app's tokens instead, so a toast reads as part of the product
+   in either theme: a card-coloured pill, a floating shadow for its edge, and the
+   state colours mapped to --positive / --negative / --accent / --brand. */
+
+/* html:root rather than :root — sileo injects its stylesheet at runtime, so it
+   lands after ours in the cascade and a bare :root would lose the tie. These
+   variables are what drive the badge and the title: the library derives
+   --sileo-tone and --sileo-tone-bg from them. */
+html:root {
+  /* Was a fixed 350px, which is wider than a 360px phone before the 24px of
+     viewport padding kicks in. A max lets it shrink instead of overflowing. */
+  --sileo-width: min(350px, calc(100vw - 32px));
+  --sileo-state-success: rgb(var(--positive));
+  --sileo-state-error: rgb(var(--negative));
+  --sileo-state-warning: rgb(var(--accent));
+  --sileo-state-info: rgb(var(--brand));
+  --sileo-state-action: rgb(var(--brand));
+  --sileo-state-loading: rgb(var(--muted-foreground));
+}
+
+/* The pill and the expanded body are SVG <rect>s painted by a fill *attribute*.
+   A CSS declaration outranks a presentation attribute, so this wins without
+   needing !important.
+
+   The stroke is not decoration: --card is 255 255 255 against a 247 248 250 page
+   in the light theme, which is 1.03:1 — with fill alone the toast has no visible
+   container and reads as a loose badge floating over the content. The 1px
+   --border hairline is what makes it a card, exactly as every other surface in
+   the app does it. The pill rect carries no gooey filter of its own (that sits on
+   the separate morph canvas), so the hairline survives. */
+[data-sileo-pill],
+[data-sileo-body] {
+  fill: rgb(var(--card));
+  stroke: rgb(var(--border));
+  stroke-width: 1;
+}
+
+[data-sileo-toast] {
+  filter: drop-shadow(0 6px 16px rgb(var(--foreground) / 0.1));
+}
+.dark [data-sileo-toast] {
+  filter: drop-shadow(0 6px 22px rgb(0 0 0 / 0.6));
+}
+
+/* sileo title-cases every title, so "Market is closed" renders as "Market Is
+   Closed" and "Insufficient funds" as "Insufficient Funds". That reads wrong for
+   a sentence, and the app writes its copy in sentence case everywhere else.
+   Needs to outrank the library's rule, which is injected at runtime, hence the
+   `html` prefix — a bare attribute selector is a tie and would lose. */
+html [data-sileo-title] {
+  text-transform: none;
+}

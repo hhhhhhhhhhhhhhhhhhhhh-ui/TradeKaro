@@ -131,18 +131,19 @@ export default function RootLayout({
               </HideOnAuth>
             </HideOnAdmin>
           </div>
+          {/* Appearance lives in globals.css under "sileo toasts" so it can use the
+              theme tokens and respond to .dark. Only geometry is set here.
+
+              The old config passed `fill: "#171717"` plus a `styles{}` block. The
+              fill hardcoded a near-black pill in BOTH themes, and the block was
+              dead config — its classes use Tailwind v4's suffix-! syntax
+              (`text-white!`, `rounded-[16px]!`) on a v3 project, so no CSS was
+              generated and the title silently fell back to sileo's own oklch
+              green. Both are replaced. */}
           <Toaster
             position="bottom-right"
-            options={{
-              fill: "#171717",
-              roundness: 16,
-              styles: {
-                title: "text-white!",
-                description: "text-white/75!",
-                badge: "bg-white/10! rounded-[16px]!",
-                button: "bg-white/10! hover:bg-white/15! rounded-[16px]!",
-              },
-            }}
+            offset={16}
+            options={{ roundness: 12 }}
           />
           {onVercel ? <Analytics /> : null}
         </ThemeProvider>
