@@ -75,6 +75,13 @@ function endAll() {
   }
   closers.clear();
   closeIdleSockets();
+  // A stream's socket only counts as idle a tick after its response has ended, so
+  // the sweep above runs too early to reap the SSE connections it just closed.
+  // Sweep again shortly after — when that works, Next's own clean exit wins the
+  // race and the backstop below never fires.
+  for (const ms of [50, 250, 600]) {
+    setTimeout(closeIdleSockets, ms).unref();
+  }
 
   // Hard backstop. The listener stopped accepting the instant SIGTERM landed, so
   // every millisecond from here is a 502 for a real visitor. Cap the wait instead
@@ -87,7 +94,8 @@ function endAll() {
 /** Install the process-level handlers. Idempotent. */
 export function installShutdownHook(): void {
   if (hooked) return;
-  if (typeof process === "undefined" || typeof process.on !== "function") return;
+  if (typeof process === "undefined" || typeof process.on !== "function")
+    return;
   hooked = true;
   process.once("SIGTERM", endAll);
   process.once("SIGINT", endAll);
