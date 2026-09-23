@@ -1,0 +1,1963 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>
+      TradeStox — Trading Terminal, Admin Console &amp; Partner Platform
+    </title>
+    <meta
+      name="description"
+      content="Live market data terminal with positions, options chain, commodities, wallet, a full admin console and a partner/affiliate platform."
+    />
+    <style>
+      /* ── tokens ─────────────────────────────────────────────────────────────── */
+      :root {
+        --bg: #0a0d10;
+        --panel: #111519;
+        --panel-2: #161b21;
+        --line: #242c34;
+        --ink: #eef2f5;
+        --ink-2: #a9b4bf;
+        --ink-3: #77828e;
+        --brand: #2dd4bf;
+        --brand-2: #0f766e;
+        --brand-ink: #062017;
+        --up: #34d399;
+        --down: #f87171;
+        --amber: #fbbf24;
+        --r: 14px;
+        --r-sm: 10px;
+        --maxw: 1180px;
+        --sans:
+          "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system,
+          "Segoe UI", Roboto, sans-serif;
+        --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+        -webkit-text-size-adjust: 100%;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--sans);
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        overflow-x: hidden;
+      }
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+      img {
+        max-width: 100%;
+        display: block;
+      }
+      .wrap {
+        max-width: var(--maxw);
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      section {
+        padding: 88px 0;
+        border-top: 1px solid var(--line);
+      }
+      section:first-of-type {
+        border-top: 0;
+      }
+
+      h1,
+      h2,
+      h3 {
+        letter-spacing: -0.022em;
+        line-height: 1.15;
+        margin: 0;
+      }
+      h1 {
+        font-size: clamp(34px, 5.4vw, 60px);
+        font-weight: 700;
+      }
+      h2 {
+        font-size: clamp(26px, 3.4vw, 40px);
+        font-weight: 700;
+      }
+      h3 {
+        font-size: 17px;
+        font-weight: 650;
+        letter-spacing: -0.01em;
+      }
+      p {
+        margin: 0;
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 11.5px;
+        font-weight: 600;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+        color: var(--brand);
+        border: 1px solid rgb(45 212 191 / 0.3);
+        background: rgb(45 212 191 / 0.08);
+        padding: 5px 11px;
+        border-radius: 999px;
+      }
+      .lede {
+        color: var(--ink-2);
+        font-size: clamp(15px, 1.6vw, 18px);
+        max-width: 70ch;
+        margin-top: 18px;
+      }
+      .sec-head {
+        max-width: none;
+        margin-bottom: 40px;
+      }
+      .sec-head h2 {
+        margin-top: 16px;
+      }
+      .sec-head p {
+        margin-top: 14px;
+      }
+
+      /* ── top bar ────────────────────────────────────────────────────────────── */
+      header.bar {
+        position: sticky;
+        top: 0;
+        z-index: 60;
+        backdrop-filter: blur(14px);
+        background: rgb(10 13 16 / 0.82);
+        border-bottom: 1px solid var(--line);
+      }
+      .bar-in {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        height: 60px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+      }
+      .brand svg {
+        width: 22px;
+        height: 22px;
+        flex: none;
+      }
+      .bar nav {
+        display: flex;
+        gap: 4px;
+        margin-left: auto;
+        flex-wrap: wrap;
+      }
+      .bar nav a {
+        font-size: 13px;
+        color: var(--ink-2);
+        padding: 7px 11px;
+        border-radius: 8px;
+        transition:
+          0.15s background-color,
+          0.15s color;
+      }
+      .bar nav a:hover {
+        color: var(--ink);
+        background: var(--panel-2);
+      }
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--ink-2);
+        border: 1px solid var(--line);
+        background: var(--panel);
+        padding: 7px 12px;
+        border-radius: 9px;
+        cursor: pointer;
+        white-space: nowrap;
+        transition:
+          0.15s border-color,
+          0.15s color;
+      }
+      .toggle:hover {
+        border-color: var(--brand);
+        color: var(--ink);
+      }
+      .toggle .dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: var(--ink-3);
+        transition: 0.2s;
+      }
+      body.shots-dark .toggle .dot {
+        background: var(--brand);
+      }
+
+      /* ── hero ───────────────────────────────────────────────────────────────── */
+      .hero {
+        position: relative;
+        padding: 96px 0 72px;
+        overflow: hidden;
+        background:
+          radial-gradient(
+            900px 400px at 12% -8%,
+            rgb(15 118 110 / 0.34),
+            transparent 62%
+          ),
+          radial-gradient(
+            700px 340px at 88% 4%,
+            rgb(45 212 191 / 0.14),
+            transparent 60%
+          );
+      }
+      .hero h1 {
+        margin-top: 22px;
+        max-width: 20ch;
+      }
+      .hero h1 em {
+        font-style: normal;
+        color: var(--brand);
+      }
+      .cta-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: 30px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        font-size: 14px;
+        font-weight: 600;
+        padding: 12px 20px;
+        border-radius: 11px;
+        border: 1px solid transparent;
+        cursor: pointer;
+      }
+      .btn.primary {
+        background: var(--brand);
+        color: var(--brand-ink);
+        border-color: var(--brand);
+      }
+      .btn.ghost {
+        border-color: var(--line);
+        background: var(--panel);
+        color: var(--ink);
+      }
+      .btn.ghost:hover {
+        border-color: var(--brand);
+      }
+
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 14px;
+        margin-top: 52px;
+      }
+      .kpi {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        padding: 16px 18px;
+      }
+      .kpi b {
+        display: block;
+        font-size: 26px;
+        font-weight: 700;
+        letter-spacing: -0.03em;
+        font-family: var(--mono);
+      }
+      .kpi span {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.09em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        margin-top: 5px;
+      }
+      .kpi b.up {
+        color: var(--up);
+      }
+      .kpi b.brand {
+        color: var(--brand);
+      }
+
+      /* ── screenshots ────────────────────────────────────────────────────────── */
+      .shot {
+        position: relative;
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        overflow: hidden;
+        background: var(--panel);
+        margin-top: 0;
+        box-shadow: 0 26px 70px -28px rgb(0 0 0 / 0.8);
+      }
+      .shot img {
+        width: 100%;
+        display: block;
+      }
+      .shot .d {
+        display: none;
+      }
+      body.shots-dark .shot .l {
+        display: none;
+      }
+      body.shots-dark .shot .d {
+        display: block;
+      }
+      .shot .bar-dots {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 9px 12px;
+        background: var(--panel-2);
+        border-bottom: 1px solid var(--line);
+      }
+      .shot .bar-dots i {
+        width: 9px;
+        height: 9px;
+        border-radius: 50%;
+        background: var(--line);
+        display: block;
+      }
+      .shot .bar-dots u {
+        margin-left: 8px;
+        font-size: 11px;
+        font-family: var(--mono);
+        color: var(--ink-3);
+        text-decoration: none;
+        letter-spacing: 0.02em;
+      }
+      figure {
+        margin: 0;
+      }
+      figcaption {
+        font-size: 12.5px;
+        color: var(--ink-3);
+        margin-top: 11px;
+      }
+
+      /* annotation pins */
+      .pin {
+        position: absolute;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: rgb(45 212 191 / 0.18);
+        border: 2px solid var(--brand);
+        color: var(--brand);
+        font-size: 12px;
+        font-weight: 700;
+        font-family: var(--mono);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transform: translate(-50%, -50%);
+        z-index: 3;
+        box-shadow: 0 0 0 4px rgb(45 212 191 / 0.1);
+      }
+      .ring {
+        position: absolute;
+        border: 2px solid var(--brand);
+        border-radius: 10px;
+        background: rgb(45 212 191 / 0.09);
+        z-index: 3;
+        pointer-events: none;
+      }
+      .pin-list {
+        list-style: none;
+        padding: 0;
+        margin: 16px 0 0;
+        display: grid;
+        gap: 8px;
+      }
+      .pin-list li {
+        display: flex;
+        gap: 11px;
+        align-items: flex-start;
+        font-size: 13.5px;
+        color: var(--ink-2);
+      }
+      .pin-list i {
+        flex: none;
+        width: 22px;
+        height: 22px;
+        border-radius: 50%;
+        font-style: normal;
+        background: rgb(45 212 191 / 0.14);
+        border: 1px solid rgb(45 212 191 / 0.45);
+        color: var(--brand);
+        font-size: 11px;
+        font-weight: 700;
+        font-family: var(--mono);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin-top: 1px;
+      }
+      .pin-list b {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      /* ── layouts ────────────────────────────────────────────────────────────── */
+      .split {
+        display: grid;
+        gap: 40px;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.45fr);
+        align-items: start;
+      }
+      .split.rev {
+        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+      }
+      .stack {
+        display: grid;
+        gap: 26px;
+      }
+      @media (max-width: 900px) {
+        .split,
+        .split.rev {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .grid-2 {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      }
+      .grid-3 {
+        display: grid;
+        gap: 18px;
+        grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      }
+      .grid-4 {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+      }
+
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: var(--r);
+        padding: 20px;
+        transition:
+          0.18s border-color,
+          0.18s transform;
+      }
+      .card:hover {
+        border-color: rgb(45 212 191 / 0.42);
+        transform: translateY(-2px);
+      }
+      .card h3 {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+      }
+      .card p {
+        font-size: 13.5px;
+        color: var(--ink-2);
+        margin-top: 9px;
+      }
+      .card ul {
+        margin: 11px 0 0;
+        padding-left: 17px;
+        font-size: 13px;
+        color: var(--ink-2);
+      }
+      .card li {
+        margin: 4px 0;
+      }
+      .card li::marker {
+        color: var(--brand);
+      }
+      .ico {
+        flex: none;
+        width: 34px;
+        height: 34px;
+        border-radius: 9px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        background: rgb(45 212 191 / 0.11);
+        border: 1px solid rgb(45 212 191 / 0.28);
+      }
+
+      /* pill list */
+      .pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 16px;
+      }
+      .pill {
+        font-size: 12px;
+        font-weight: 600;
+        padding: 6px 11px;
+        border-radius: 999px;
+        background: var(--panel-2);
+        border: 1px solid var(--line);
+        color: var(--ink-2);
+      }
+      .pill.on {
+        color: var(--brand);
+        border-color: rgb(45 212 191 / 0.38);
+        background: rgb(45 212 191 / 0.09);
+      }
+
+      /* ── mobile rail ────────────────────────────────────────────────────────── */
+      .phones {
+        display: flex;
+        gap: 26px;
+        overflow-x: auto;
+        padding: 6px 4px 22px;
+        scroll-snap-type: x mandatory;
+      }
+      .phones::-webkit-scrollbar {
+        height: 9px;
+      }
+      .phones::-webkit-scrollbar-thumb {
+        background: var(--line);
+        border-radius: 9px;
+      }
+      .phone {
+        flex: none;
+        width: 262px;
+        scroll-snap-align: start;
+      }
+      .phone .frame {
+        border: 9px solid #1c2229;
+        border-radius: 32px;
+        overflow: hidden;
+        background: #000;
+        box-shadow: 0 22px 50px -20px rgb(0 0 0 / 0.85);
+      }
+      .phone .frame img {
+        width: 100%;
+        display: block;
+      }
+      .phone .frame img.d {
+        display: none;
+      }
+      body.shots-dark .phone .frame img.l {
+        display: none;
+      }
+      body.shots-dark .phone .frame img.d {
+        display: block;
+      }
+      .phone .label {
+        font-size: 12.5px;
+        color: var(--ink-3);
+        text-align: center;
+        margin-top: 11px;
+      }
+
+      /* ── feature table ──────────────────────────────────────────────────────── */
+      .tbl {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13.5px;
+        margin-top: 14px;
+      }
+      .tbl th,
+      .tbl td {
+        text-align: left;
+        padding: 11px 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .tbl th {
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--ink-3);
+        font-weight: 600;
+      }
+      .tbl td:first-child {
+        color: var(--ink);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .tbl td {
+        color: var(--ink-2);
+      }
+      .tbl tr:last-child td {
+        border-bottom: 0;
+      }
+
+      /* ── callout ────────────────────────────────────────────────────────────── */
+      .callout {
+        background: linear-gradient(
+          135deg,
+          rgb(15 118 110 / 0.22),
+          rgb(45 212 191 / 0.06)
+        );
+        border: 1px solid rgb(45 212 191 / 0.26);
+        border-radius: var(--r);
+        padding: 22px 24px;
+      }
+      .callout h3 {
+        color: var(--brand);
+      }
+
+      footer {
+        padding: 52px 0 64px;
+        border-top: 1px solid var(--line);
+        color: var(--ink-3);
+        font-size: 13px;
+      }
+      .foot-in {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      @media (max-width: 640px) {
+        section {
+          padding: 60px 0;
+        }
+        .hero {
+          padding: 64px 0 52px;
+        }
+        .wrap {
+          padding: 0 16px;
+        }
+        .bar nav {
+          display: none;
+        }
+        .kpi b {
+          font-size: 22px;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        * {
+          transition: none !important;
+          animation: none !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="bar">
+      <div class="wrap bar-in">
+        <span class="brand">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            style="color: var(--brand)"
+          >
+            <path d="M3 17l5-6 4 4 8-9" />
+          </svg>
+          TradeStox
+        </span>
+        <nav>
+          <a href="#terminal">Trading</a>
+          <a href="#realtime">Live data</a>
+          <a href="#admin">Admin</a>
+          <a href="#operations">Operations</a>
+          <a href="#partner">Partners</a>
+          <a href="#mobile">Mobile</a>
+        </nav>
+        <button class="toggle" id="themeBtn" type="button" aria-live="polite">
+          <span class="dot"></span><span id="themeLabel">Dark screenshots</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- ═══ HERO ═══ -->
+    <section class="hero">
+      <div class="wrap">
+        <span class="eyebrow"
+          >Complete platform · Terminal · Admin · Affiliates</span
+        >
+        <h1>One platform to run a <em>trading business</em>.</h1>
+        <p class="lede">
+          A full trading terminal with live market data, positions and risk —
+          plus the admin console to operate it and the partner platform to grow
+          it. Ships light and dark, desktop and mobile.
+        </p>
+        <div class="cta-row">
+          <a class="btn primary" href="#terminal">Explore the terminal</a>
+          <a class="btn ghost" href="#admin">Admin console</a>
+          <a class="btn ghost" href="#partner">Partner platform</a>
+        </div>
+
+        <div class="kpis">
+          <div class="kpi">
+            <b class="brand">Live</b><span>Streaming feed</span>
+          </div>
+          <div class="kpi"><b>33</b><span>Commodity contracts</span></div>
+          <div class="kpi"><b>7</b><span>Order types</span></div>
+          <div class="kpi"><b>2</b><span>Themes, full parity</span></div>
+          <div class="kpi">
+            <b>3</b><span>Audiences: user, admin, partner</span>
+          </div>
+        </div>
+
+        <figure style="margin-top: 46px">
+          <div class="shot">
+            <div class="bar-dots"><i></i><i></i><i></i><u>dashboard</u></div>
+            <img
+              class="l"
+              src="shots/dashboard-light.jpg"
+              alt="Trading dashboard"
+            />
+            <img
+              class="d"
+              src="shots/dashboard-dark.jpg"
+              alt="Trading dashboard in dark mode"
+            />
+          </div>
+          <figcaption>
+            The trading dashboard — market status strip, live watchlist, open
+            positions and an integrated news feed.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ═══ TERMINAL ═══ -->
+    <section id="terminal">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">The terminal</span>
+          <h2>Everything a trader touches, in one place.</h2>
+          <p class="lede">
+            Stocks, options and commodities on the same live feed, with a
+            consistent order ticket, position book and wallet across all three.
+          </p>
+        </div>
+
+        <div class="grid-3">
+          <div class="card">
+            <h3><span class="ico">📈</span> Stocks</h3>
+            <p>
+              Browse and search the full instrument list, with live prices on
+              the tape and a featured board.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🎯</span> Options</h3>
+            <p>
+              A full option chain with live premiums, plus open interest, PCR,
+              max pain and per-strike margin.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🛢️</span> Commodities</h3>
+            <p>
+              33 MCX contracts — gold, silver, crude, natural gas, base metals —
+              with lot values and margin.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🧭</span> Screener</h3>
+            <p>
+              Filter the market down to what matters and jump straight into a
+              chart or an order.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🚀</span> Top movers</h3>
+            <p>
+              Today's gainers and losers, ranked live, so you never miss the
+              move.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">📰</span> News</h3>
+            <p>
+              A dated, linked market news feed built into the terminal instead
+              of a separate tab.
+            </p>
+          </div>
+        </div>
+
+        <div class="split" style="margin-top: 56px">
+          <div>
+            <h3 style="font-size: 22px">The order ticket</h3>
+            <p class="lede" style="font-size: 14.5px">
+              Market, Limit, SL and GTT orders. CNC or MIS product. The margin
+              it will block is shown
+              <em>before</em> you commit, along with your wallet after the fill.
+            </p>
+            <ul class="pin-list">
+              <li>
+                <i>1</i
+                ><span
+                  ><b>Live price</b> — the ticket tracks the streaming feed, not
+                  a stale snapshot.</span
+                >
+              </li>
+              <li>
+                <i>2</i
+                ><span
+                  ><b>Est. value &amp; margin</b> — value, margin blocked and
+                  charges, calculated as you type.</span
+                >
+              </li>
+              <li>
+                <i>3</i
+                ><span
+                  ><b>Product-aware margin</b> — the leverage rate the wallet
+                  check actually uses.</span
+                >
+              </li>
+              <li>
+                <i>4</i
+                ><span
+                  ><b>Wallet after</b> — the resulting balance, so there are no
+                  surprises.</span
+                >
+              </li>
+            </ul>
+          </div>
+          <figure>
+            <div class="shot" style="margin: 0">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/stocks/RELIANCE</u>
+              </div>
+              <img
+                class="l"
+                src="shots/stock-detail-light.jpg"
+                alt="Stock detail and order ticket"
+              />
+              <img
+                class="d"
+                src="shots/stock-detail-dark.jpg"
+                alt="Stock detail and order ticket, dark"
+              />
+            </div>
+            <figcaption>
+              Charts, depth, trade markers and the order ticket on one screen.
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="grid-2" style="margin-top: 44px">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/options</u></div>
+              <img class="l" src="shots/options-light.jpg" alt="Option chain" />
+              <img
+                class="d"
+                src="shots/options-dark.jpg"
+                alt="Option chain, dark"
+              />
+            </div>
+            <figcaption>
+              Option chain with margin per strike and the full-chain stats
+              strip.
+            </figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/commodities</u>
+              </div>
+              <img
+                class="l"
+                src="shots/commodities-light.jpg"
+                alt="Commodities board"
+              />
+              <img
+                class="d"
+                src="shots/commodities-dark.jpg"
+                alt="Commodities board, dark"
+              />
+            </div>
+            <figcaption>
+              Commodities with live LTP, day change, spread, OI, lot value and
+              margin.
+            </figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ POSITIONS (annotated hero feature) ═══ -->
+    <section id="positions">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Positions &amp; risk</span>
+          <h2>The book, and what it's doing right now.</h2>
+          <p class="lede">
+            Closed, carried and intraday legs in one view, marked to the live
+            feed. Tap any row for the full position sheet — exit it all, add
+            more, or take a partial exit.
+          </p>
+        </div>
+
+        <figure style="margin: 0">
+          <div class="shot">
+            <div class="bar-dots"><i></i><i></i><i></i><u>/positions</u></div>
+            <img class="l" src="shots/positions-light.jpg" alt="Positions" />
+            <img
+              class="d"
+              src="shots/positions-dark.jpg"
+              alt="Positions, dark"
+            />
+            <!-- annotations -->
+            <span class="pin" style="left: 6.6%; top: 21.6%">1</span>
+            <span class="pin" style="left: 38.4%; top: 19.4%">2</span>
+            <span class="pin" style="left: 50.9%; top: 35.4%">3</span>
+            <span class="pin" style="left: 86.6%; top: 35.4%">4</span>
+          </div>
+          <ol
+            class="pin-list"
+            style="grid-template-columns: repeat(auto-fit, minmax(300px, 1fr))"
+          >
+            <li>
+              <i>1</i
+              ><span
+                ><b>Total P&amp;L</b> — the arithmetic sum of the rows on
+                screen, re-computed on every tick.</span
+              >
+            </li>
+            <li>
+              <i>2</i
+              ><span
+                ><b>Disjoint tabs</b> — Closed, Position (carried) and Active
+                (intraday), with live counts.</span
+              >
+            </li>
+            <li>
+              <i>3</i
+              ><span
+                ><b>Per-leg P&amp;L</b> — marked to market, colour-coded, with
+                the entry time badge.</span
+              >
+            </li>
+            <li>
+              <i>4</i
+              ><span
+                ><b>Avg vs LTP</b> — the number behind the P&amp;L, on the same
+                line.</span
+              >
+            </li>
+          </ol>
+        </figure>
+
+        <div class="split" style="margin-top: 52px">
+          <div>
+            <h3 style="font-size: 22px">The position sheet</h3>
+            <p class="lede" style="font-size: 14.5px">
+              Tap a row and the whole position opens up: depth, the session's
+              OHLC, current P&amp;L, and the three actions that matter.
+            </p>
+            <ul class="pin-list">
+              <li>
+                <i>1</i
+                ><span
+                  ><b>Exit All</b> — square the whole leg off in one tap.</span
+                >
+              </li>
+              <li>
+                <i>2</i
+                ><span
+                  ><b>Add More</b> — scale in, in the position's own
+                  direction.</span
+                >
+              </li>
+              <li>
+                <i>3</i
+                ><span
+                  ><b>Partial Exit</b> — with a quantity stepper that can never
+                  over-exit.</span
+                >
+              </li>
+              <li>
+                <i>4</i
+                ><span
+                  ><b>BID / ASK &amp; OHLC</b> — the live market context for the
+                  decision.</span
+                >
+              </li>
+            </ul>
+          </div>
+          <div class="stack">
+            <div class="callout">
+              <h3>Built for the awkward cases</h3>
+              <p
+                style="margin-top: 10px; font-size: 13.5px; color: var(--ink-2)"
+              >
+                One scrip can hold a delivery position <em>and</em> an intraday
+                leg at the same time — they open separate sheets and square off
+                against their own exchange cutoff. The margin ledger strips out
+                balance, margin available, margin used and M2M, and the day's
+                square-off is announced inline the moment the cutoff passes.
+              </p>
+            </div>
+            <div class="pills">
+              <span class="pill on">Ledger balance</span
+              ><span class="pill on">Margin available</span>
+              <span class="pill on">Margin used</span
+              ><span class="pill on">M2M</span>
+              <span class="pill on">Auto square-off</span
+              ><span class="pill on">Fractional lots</span>
+              <span class="pill on">Short selling</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ REALTIME ═══ -->
+    <section id="realtime">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Live data</span>
+          <h2>Prices that move without a refresh.</h2>
+          <p class="lede">
+            One shared streaming connection per browser tab feeds every widget
+            on the page — the ticker, the charts, the order ticket, the position
+            book and the P&amp;L — so nothing on screen is ever a stale
+            snapshot.
+          </p>
+        </div>
+        <div class="grid-4">
+          <div class="card">
+            <h3>Streaming, not polling</h3>
+            <p>
+              Server-pushed ticks over SSE, with REST polling as an automatic
+              fallback if the stream drops.
+            </p>
+          </div>
+          <div class="card">
+            <h3>One connection per tab</h3>
+            <p>
+              Every component shares a single subscription, so adding widgets
+              doesn't multiply requests.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Depth &amp; OI onboard</h3>
+            <p>
+              Best bid and offer, open interest and volume travel with the tick.
+            </p>
+          </div>
+          <div class="card">
+            <h3>Feed health on screen</h3>
+            <p>
+              A live/delayed indicator tells the user exactly what they're
+              looking at.
+            </p>
+          </div>
+        </div>
+        <figure style="margin-top: 40px">
+          <div class="shot">
+            <div class="bar-dots"><i></i><i></i><i></i><u>/stocks</u></div>
+            <img class="l" src="shots/stocks-light.jpg" alt="Stocks board" />
+            <img
+              class="d"
+              src="shots/stocks-dark.jpg"
+              alt="Stocks board, dark"
+            />
+          </div>
+          <figcaption>
+            The ticker tape and boards update on the same stream as the order
+            ticket.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ═══ WALLET ═══ -->
+    <section id="wallet">
+      <div class="wrap">
+        <div class="split rev">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/wallet</u></div>
+              <img class="l" src="shots/wallet-light.jpg" alt="Wallet" />
+              <img class="d" src="shots/wallet-dark.jpg" alt="Wallet, dark" />
+            </div>
+            <figcaption>
+              Deposits, withdrawals, saved payout accounts and limits in one
+              panel.
+            </figcaption>
+          </figure>
+          <div>
+            <span class="eyebrow">Money</span>
+            <h2 style="margin-top: 14px">Wallet, ledger and payouts.</h2>
+            <p class="lede" style="font-size: 14.5px">
+              A single balance that the trading book, the position margin and
+              the withdrawal rail all agree on.
+            </p>
+            <ul class="pin-list">
+              <li>
+                <i>1</i
+                ><span
+                  ><b>Deposits</b> — with min/max limits driven by platform
+                  settings, not hardcoded.</span
+                >
+              </li>
+              <li>
+                <i>2</i
+                ><span
+                  ><b>Withdrawals</b> — saved payout accounts, KYC gating and an
+                  approval queue.</span
+                >
+              </li>
+              <li>
+                <i>3</i
+                ><span><b>Ledger</b> — every money movement, exportable.</span>
+              </li>
+              <li>
+                <i>4</i
+                ><span
+                  ><b>Every fill lands here</b> — stocks and options move the
+                  same wallet instantly.</span
+                >
+              </li>
+            </ul>
+            <div class="pills">
+              <span class="pill on">Deposit</span
+              ><span class="pill on">Withdraw</span>
+              <span class="pill on">Payout accounts</span
+              ><span class="pill on">KYC gate</span>
+              <span class="pill on">Ledger export</span
+              ><span class="pill on">Order history</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 44px">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/portfolio/orders</u>
+              </div>
+              <img class="l" src="shots/orders-light.jpg" alt="Orders" />
+              <img class="d" src="shots/orders-dark.jpg" alt="Orders, dark" />
+            </div>
+            <figcaption>
+              Every fill — stocks and options — with an ALL / STOCK / OPTION
+              filter.
+            </figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/watchlist</u></div>
+              <img class="l" src="shots/watchlist-light.jpg" alt="Watchlist" />
+              <img
+                class="d"
+                src="shots/watchlist-dark.jpg"
+                alt="Watchlist, dark"
+              />
+            </div>
+            <figcaption>Multiple watchlists, all streaming.</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ ADMIN ═══ -->
+    <section id="admin">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Admin console</span>
+          <h2>Operate the whole platform from one screen.</h2>
+          <p class="lede">
+            Users, KYC, money, trading rules, affiliates, sessions, analytics
+            and an audit trail — deliberately a separate, denser console from
+            the trading UI.
+          </p>
+        </div>
+
+        <figure style="margin: 0">
+          <div class="shot">
+            <div class="bar-dots"><i></i><i></i><i></i><u>/admin</u></div>
+            <img class="l" src="shots/admin-light.jpg" alt="Admin console" />
+            <img
+              class="d"
+              src="shots/admin-dark.jpg"
+              alt="Admin console, dark"
+            />
+          </div>
+          <figcaption>The operator console.</figcaption>
+        </figure>
+
+        <div class="grid-3" style="margin-top: 34px">
+          <div class="card">
+            <h3><span class="ico">👥</span> Users &amp; KYC</h3>
+            <p>
+              Search and open any account, approve or reject KYC with a reason,
+              and override the KYC requirement per user — the override always
+              beats the platform switch. Bulk actions included.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">💳</span> Finance</h3>
+            <p>
+              Deposits, withdrawals, payout accounts and the payment gateway.
+              Gateway keys are write-only: they can be replaced but never read
+              back.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">⚙️</span> Trading rules</h3>
+            <p>
+              Starting balance, max quantity, max positions, short selling,
+              margin percentage, brokerage, an order kill-switch, after-hours
+              fills, auto square-off and its cutoff, and fractional lots.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🤝</span> Affiliates</h3>
+            <p>
+              Review applications, approve or reject with a reason, set
+              commission rates, and manage payouts — every action written to the
+              audit log.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🖥️</span> Sessions</h3>
+            <p>
+              See who is signed in where, revoke a single session or sign a user
+              out everywhere.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">📊</span> Analytics &amp; audit</h3>
+            <p>
+              Platform analytics plus a searchable audit trail of operator
+              actions.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🧩</span> Clients</h3>
+            <p>Client records with bulk operations for the day-to-day work.</p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🔐</span> Locked down</h3>
+            <p>
+              The console is separate from the trading app: its own login, its
+              own layout, and every API route refuses a non-operator.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🧾</span> Order defaults</h3>
+            <p>
+              Default ticket quantity, confirmation prompts and alert limits.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ ADMIN DEEP DIVE ═══ -->
+    <section id="operations">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Operations, in depth</span>
+          <h2>The parts that actually run a business.</h2>
+          <p class="lede">
+            Compliance, money in, money out, and a payment rail you can point anywhere.
+            These are the systems behind the console, not just the buttons on it.
+          </p>
+        </div>
+
+        <h3 style="font-size: 23px">The KYC system</h3>
+        <p class="lede" style="font-size: 14.5px">
+          A gated lifecycle, not a checkbox. Documents are captured, queued, reviewed and
+          decided on — and the decision then follows the user through every money path.
+        </p>
+        <div class="grid-4" style="margin-top: 22px">
+          <div class="card"><h3><span class="ico">1</span> Capture</h3><p>The user submits identity and document details from their profile, in a flow they can leave and resume.</p></div>
+          <div class="card"><h3><span class="ico">2</span> Queue</h3><p>Submissions land in an operator queue with a status. Nothing is ever auto-approved.</p></div>
+          <div class="card"><h3><span class="ico">3</span> Decide</h3><p>Approve, or reject with a reason — and that reason is shown to the user, so a rejection is actionable instead of a dead end.</p></div>
+          <div class="card"><h3><span class="ico">4</span> Override</h3><p>Any single account can be exempted from the withdrawal-KYC rule either way. The per-user override always beats the platform switch.</p></div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 20px">
+          <div class="callout">
+            <h3>Gated on how much they've deposited</h3>
+            <p style="margin-top: 10px; font-size: 13.5px; color: var(--ink-2)">
+              KYC can require a minimum total deposit before it can be completed, or be open
+              to everyone. That deposit gate is the only real anti-fraud control on the
+              money-out path, which is exactly why "withdrawal requires KYC" ships switched
+              <b style="color: var(--ink)">on</b> — without it, an account can be funded and
+              emptied again before any paperwork exists.
+            </p>
+          </div>
+          <div class="callout">
+            <h3>Banning and KYC are separate states</h3>
+            <p style="margin-top: 10px; font-size: 13.5px; color: var(--ink-2)">
+              An operator can pause a bad actor without muddying the compliance record, and a
+              corrected application can be resubmitted. The wallet refuses a withdrawal the
+              moment either gate fails, and tells the user which one it was.
+            </p>
+          </div>
+        </div>
+
+        <h3 style="font-size: 23px; margin-top: 52px">The deposit &amp; withdrawal system</h3>
+        <p class="lede" style="font-size: 14.5px">
+          A payment rail that ships switched off. While the master switch is off every
+          payment route refuses, so the rail can be wired up and tested long before it
+          touches live money.
+        </p>
+        <div class="grid-3" style="margin-top: 22px">
+          <div class="card"><h3><span class="ico">⬇️</span> Deposits</h3><p>The user creates a pay-in and is sent to the gateway. The balance is credited only when a signed webhook confirms it. Min and max limits are platform settings, not hardcoded.</p></div>
+          <div class="card"><h3><span class="ico">⬆️</span> Withdrawals</h3><p>A separate rail: its own switch, its own limits and its own approval queue. Requests go to an operator rather than straight out of the door.</p></div>
+          <div class="card"><h3><span class="ico">🏦</span> Payout accounts</h3><p>Users save a bank or UPI destination once, then withdraw to it in a single step.</p></div>
+          <div class="card"><h3><span class="ico">🔏</span> Signed callbacks</h3><p>Every callback is verified against a webhook secret. A forged callback declaring a large top-up settled is refused outright — without this, a stranger could credit their own account.</p></div>
+          <div class="card"><h3><span class="ico">🙈</span> Write-only secrets</h3><p>Gateway keys can be replaced from the console but never read back — the API returns them masked, so a support screenshot can't leak a key.</p></div>
+          <div class="card"><h3><span class="ico">🧮</span> Ledger is the truth</h3><p>The withdrawable balance is checked against the trading ledger, so the cash panel and the book can't drift apart.</p></div>
+        </div>
+
+        <h3 style="font-size: 23px; margin-top: 52px">Bring your own gateway</h3>
+        <p class="lede" style="font-size: 14.5px">
+          The payment provider is a configuration row, not a code path. Any provider that
+          follows the same pay-in / pay-out / signed-webhook shape will drop in — a local
+          gateway, a regional one, or your own.
+        </p>
+        <div class="split" style="margin-top: 24px">
+          <div>
+            <ul class="pin-list">
+              <li><i>1</i><span><b>API base URL</b> — an editable field in the console. Point it at your own gateway or at a sandbox.</span></li>
+              <li><i>2</i><span><b>Pay-in key &amp; secret</b> — the pair that creates deposits.</span></li>
+              <li><i>3</i><span><b>Pay-out key</b> — a <em>separate</em> pair for withdrawals, because the two are decided by different things.</span></li>
+              <li><i>4</i><span><b>Webhook secret</b> — a third secret, used only to verify inbound callbacks. Reusing the pay-in secret here rejects every callback as a bad signature, which looks exactly like callbacks never arriving.</span></li>
+              <li><i>5</i><span><b>Superadmin-gated</b> — the base URL is editable only by a superadmin, and warns when it is not the provider's default.</span></li>
+            </ul>
+            <div class="pills">
+              <span class="pill on">Own gateway</span>
+              <span class="pill on">Third-party gateway</span>
+              <span class="pill on">Sandbox</span>
+              <span class="pill on">Separate pay-in / pay-out rails</span>
+              <span class="pill on">Master switch</span>
+            </div>
+          </div>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/admin · finance · gateway</u></div>
+              <img class="l" src="shots/admin-light.jpg" alt="Payment gateway settings in the admin console" />
+              <img class="d" src="shots/admin-dark.jpg" alt="Payment gateway settings in the admin console, dark" />
+            </div>
+            <figcaption>Gateway credentials and limits live in the Finance section of the console.</figcaption>
+          </figure>
+        </div>
+
+        <h3 style="font-size: 23px; margin-top: 52px">The rest of the operator toolkit</h3>
+        <div class="grid-3" style="margin-top: 20px">
+          <div class="card"><h3><span class="ico">📊</span> Analytics</h3><p>Platform reporting over the same data the console acts on.</p></div>
+          <div class="card"><h3><span class="ico">🗂️</span> Directory &amp; clients</h3><p>Client records with bulk operations for day-to-day work.</p></div>
+          <div class="card"><h3><span class="ico">🌙</span> MIS sweep</h3><p>A dedicated operator action to run the intraday square-off on demand, as well as on the schedule.</p></div>
+          <div class="card"><h3><span class="ico">🧮</span> Affiliate reconcile</h3><p>Recompute partner commission from the source events, so a rate change or a backfill gets settled rather than argued about.</p></div>
+          <div class="card"><h3><span class="ico">🔑</span> Password &amp; sessions</h3><p>Operator password management, plus per-device session listing with revoke-one and revoke-all.</p></div>
+          <div class="card"><h3><span class="ico">🌐</span> Public config</h3><p>One endpoint hands the app its non-secret switches — fees, limits, feature flags — and never a credential.</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ PARTNER ═══ -->
+    <section id="partner">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Partner platform</span>
+          <h2>An affiliate business, not a referral counter.</h2>
+          <p class="lede">
+            Partners apply, get approved, generate tracked links with QR codes,
+            watch traffic and signups land in real time, earn commission, and
+            request payouts — all self-serve.
+          </p>
+        </div>
+
+        <div class="grid-2">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/dashboard</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-dashboard-light.jpg"
+                alt="Partner dashboard"
+              />
+              <img
+                class="d"
+                src="shots/partner-dashboard-dark.jpg"
+                alt="Partner dashboard, dark"
+              />
+            </div>
+            <figcaption>
+              The partner dashboard — clicks, signups and earnings at a glance.
+            </figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/links</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-links-light.jpg"
+                alt="Partner links"
+              />
+              <img
+                class="d"
+                src="shots/partner-links-dark.jpg"
+                alt="Partner links, dark"
+              />
+            </div>
+            <figcaption>Tracked links and QR codes per campaign.</figcaption>
+          </figure>
+        </div>
+
+        <div class="grid-3" style="margin-top: 34px">
+          <div class="card">
+            <h3><span class="ico">🔗</span> Links &amp; QR</h3>
+            <p>
+              Generate tracked referral links for any campaign, with QR codes
+              and hosted landing pages. Links are built from the public base
+              URL, so they're always shareable.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">📈</span> Stats</h3>
+            <p>Clicks, signups and conversion, per link and per campaign.</p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">💰</span> Earnings</h3>
+            <p>
+              Commission accrued and payable, based on the rate the operator set
+              for that partner.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🧑‍🤝‍🧑</span> Referrals</h3>
+            <p>Every user the partner brought in, with their status.</p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🎯</span> Tracking &amp; pixels</h3>
+            <p>
+              Attach Meta and GA4 pixels to a partner's traffic. Events are
+              queued server-side and dispatched by a timer that survives
+              restarts — so a conversion is never lost to a closed tab.
+            </p>
+          </div>
+          <div class="card">
+            <h3><span class="ico">🏦</span> Payouts</h3>
+            <p>Request a payout and follow its status through to paid.</p>
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 34px">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/tracking</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-tracking-light.jpg"
+                alt="Partner tracking"
+              />
+              <img
+                class="d"
+                src="shots/partner-tracking-dark.jpg"
+                alt="Partner tracking, dark"
+              />
+            </div>
+            <figcaption>Pixel and conversion tracking.</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/earnings</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-earnings-light.jpg"
+                alt="Partner earnings"
+              />
+              <img
+                class="d"
+                src="shots/partner-earnings-dark.jpg"
+                alt="Partner earnings, dark"
+              />
+            </div>
+            <figcaption>Commission and payout history.</figcaption>
+          </figure>
+        </div>
+
+        <div class="grid-3" style="margin-top: 34px">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/stats</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-stats-light.jpg"
+                alt="Partner stats"
+              />
+              <img
+                class="d"
+                src="shots/partner-stats-dark.jpg"
+                alt="Partner stats, dark"
+              />
+            </div>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/referrals</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-referrals-light.jpg"
+                alt="Partner referrals"
+              />
+              <img
+                class="d"
+                src="shots/partner-referrals-dark.jpg"
+                alt="Partner referrals, dark"
+              />
+            </div>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/payouts</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-payouts-light.jpg"
+                alt="Partner payouts"
+              />
+              <img
+                class="d"
+                src="shots/partner-payouts-dark.jpg"
+                alt="Partner payouts, dark"
+              />
+            </div>
+          </figure>
+        </div>
+
+        <div class="callout" style="margin-top: 34px">
+          <h3>Application flow, end to end</h3>
+          <p style="margin-top: 10px; font-size: 13.5px; color: var(--ink-2)">
+            A partner applies at
+            <span class="pill" style="font-family: var(--mono)"
+              >/partners/join</span
+            >
+            and lands in a pending state — never self-approved. An operator
+            reviews it in the console, approves or rejects with a reason, and
+            sets the commission rate. The partner is notified, the decision is
+            audited, and a closed payout can't be re-decided.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ MOBILE ═══ -->
+    <section id="mobile">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Mobile</span>
+          <h2>Trade from your pocket.</h2>
+          <p class="lede">
+            The same terminal on a 390px phone — not a cut-down view. A thumb-friendly
+            bottom dock, a bottom-sheet position view, and full-width tap targets.
+            Every frame below is a real capture.
+          </p>
+        </div>
+
+        <h3 style="font-size: 21px">Positions, on a phone</h3>
+        <p class="lede" style="font-size: 14px; margin-top: 8px">
+          Tap a row and the whole position opens as a bottom sheet: live price and day
+          change, bid/ask, the session's range, current P&amp;L, and the three actions.
+        </p>
+        <div class="phones" style="margin-top: 20px">
+          <div class="phone"><div class="frame"><img class="l" src="shots/positions-mobile.jpg" alt="Positions list on mobile" />
+<img class="d" src="shots/positions-mobile-dark.jpg" alt="Positions list on mobile" /></div><div class="label">The book</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/position-sheet-mobile.jpg" alt="Position sheet on mobile" />
+<img class="d" src="shots/position-sheet-mobile-dark.jpg" alt="Position sheet on mobile" /></div><div class="label">Tap a row → position sheet</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/position-partial-exit-mobile.jpg" alt="Partial exit on mobile" />
+<img class="d" src="shots/position-partial-exit-mobile-dark.jpg" alt="Partial exit on mobile" /></div><div class="label">Arm Partial Exit → stepper</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/position-add-more-mobile.jpg" alt="Add more on mobile" />
+<img class="d" src="shots/position-add-more-mobile-dark.jpg" alt="Add more on mobile" /></div><div class="label">Or scale in with Add More</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/positions-ledger-mobile.jpg" alt="Margin ledger on mobile" />
+<img class="d" src="shots/positions-ledger-mobile-dark.jpg" alt="Margin ledger on mobile" /></div><div class="label">Margin ledger, expanded</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/positions-closed-mobile.jpg" alt="Closed round-trips on mobile" />
+<img class="d" src="shots/positions-closed-mobile-dark.jpg" alt="Closed round-trips on mobile" /></div><div class="label">Closed round-trips</div></div>
+        </div>
+
+        <div class="callout" style="margin-top: 6px">
+          <h3>Three taps from book to exit</h3>
+          <ol class="pin-list">
+            <li><i>1</i><span><b>Tap the row.</b> The sheet opens with the live price, day change, BID/ASK and the session's OHLC already on screen.</span></li>
+            <li><i>2</i><span><b>Arm the action.</b> Partial Exit or Add More turns solid and reveals a quantity stepper, pre-filled to half the holding. Partial exit can never reach the full quantity — a partial exit has to leave something behind.</span></li>
+            <li><i>3</i><span><b>Confirm.</b> The fill lands, the row updates, and the P&amp;L, the margin ledger and the wallet all move together.</span></li>
+          </ol>
+        </div>
+
+        <h3 style="font-size: 21px; margin-top: 40px">Placing a trade</h3>
+        <p class="lede" style="font-size: 14px; margin-top: 8px">
+          The order ticket, the option chain and the commodity board, all on the same
+          streaming feed as the desktop terminal.
+        </p>
+        <div class="phones" style="margin-top: 20px">
+          <div class="phone"><div class="frame"><img class="l" src="shots/stock-ticket-mobile.jpg" alt="Order ticket on mobile" />
+<img class="d" src="shots/stock-ticket-mobile-dark.jpg" alt="Order ticket on mobile" /></div><div class="label">Stock order ticket</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/options-mobile.jpg" alt="Option chain on mobile" />
+<img class="d" src="shots/options-mobile-dark.jpg" alt="Option chain on mobile" /></div><div class="label">Option chain</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/commodities-mobile.jpg" alt="Commodities on mobile" />
+<img class="d" src="shots/commodities-mobile-dark.jpg" alt="Commodities on mobile" /></div><div class="label">Commodities</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/dashboard-mobile.jpg" alt="Dashboard on mobile" />
+<img class="d" src="shots/dashboard-mobile-dark.jpg" alt="Dashboard on mobile" /></div><div class="label">Dashboard</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/watchlist-mobile.jpg" alt="Watchlist on mobile" />
+<img class="d" src="shots/watchlist-mobile-dark.jpg" alt="Watchlist on mobile" /></div><div class="label">Watchlist</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/screener-mobile.jpg" alt="Screener on mobile" />
+<img class="d" src="shots/screener-mobile-dark.jpg" alt="Screener on mobile" /></div><div class="label">Screener</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/topmovers-mobile.jpg" alt="Top movers on mobile" />
+<img class="d" src="shots/topmovers-mobile-dark.jpg" alt="Top movers on mobile" /></div><div class="label">Top movers</div></div>
+        </div>
+
+        <h3 style="font-size: 21px; margin-top: 40px">Everything else, on the same phone</h3>
+        <p class="lede" style="font-size: 14px; margin-top: 8px">
+          Orders, wallet, ledger, profile, security, the admin console and the partner
+          platform — no page is desktop-only.
+        </p>
+        <div class="phones" style="margin-top: 20px">
+          <div class="phone"><div class="frame"><img class="l" src="shots/orders-mobile.jpg" alt="Orders on mobile" />
+<img class="d" src="shots/orders-mobile-dark.jpg" alt="Orders on mobile" /></div><div class="label">Order history</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/wallet-mobile.jpg" alt="Wallet on mobile" />
+<img class="d" src="shots/wallet-mobile-dark.jpg" alt="Wallet on mobile" /></div><div class="label">Wallet</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/ledger-mobile.jpg" alt="Ledger on mobile" />
+<img class="d" src="shots/ledger-mobile-dark.jpg" alt="Ledger on mobile" /></div><div class="label">Ledger</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/portfolio-mobile.jpg" alt="Portfolio on mobile" />
+<img class="d" src="shots/portfolio-mobile-dark.jpg" alt="Portfolio on mobile" /></div><div class="label">Portfolio</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/news-mobile.jpg" alt="News on mobile" />
+<img class="d" src="shots/news-mobile-dark.jpg" alt="News on mobile" /></div><div class="label">News</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/profile-mobile.jpg" alt="Profile on mobile" />
+<img class="d" src="shots/profile-mobile-dark.jpg" alt="Profile on mobile" /></div><div class="label">Profile &amp; KYC</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/settings-mobile.jpg" alt="Settings on mobile" />
+<img class="d" src="shots/settings-mobile-dark.jpg" alt="Settings on mobile" /></div><div class="label">Settings</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/connect-mobile.jpg" alt="Connect on mobile" />
+<img class="d" src="shots/connect-mobile-dark.jpg" alt="Connect on mobile" /></div><div class="label">Connect account</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/home-mobile.jpg" alt="Landing on mobile" />
+<img class="d" src="shots/home-mobile-dark.jpg" alt="Landing on mobile" /></div><div class="label">Public landing</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/admin-mobile.jpg" alt="Admin on mobile" />
+<img class="d" src="shots/admin-mobile-dark.jpg" alt="Admin on mobile" /></div><div class="label">Admin console</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/partner-dashboard-mobile.jpg" alt="Partner dashboard on mobile" />
+<img class="d" src="shots/partner-dashboard-mobile-dark.jpg" alt="Partner dashboard on mobile" /></div><div class="label">Partner dashboard</div></div>
+          <div class="phone"><div class="frame"><img class="l" src="shots/partner-links-mobile.jpg" alt="Partner links on mobile" />
+<img class="d" src="shots/partner-links-mobile-dark.jpg" alt="Partner links on mobile" /></div><div class="label">Partner links</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═══ THEMES + PLATFORM ═══ -->
+    <section id="platform">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Under the hood</span>
+          <h2>Light and dark, with real parity.</h2>
+          <p class="lede">
+            Two full themes, both audited for contrast — not a dark theme bolted
+            on. Every screenshot on this page swaps with the toggle in the
+            header.
+          </p>
+        </div>
+        <div class="grid-2">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>landing · light</u>
+              </div>
+              <img class="l" src="shots/home-light.jpg" alt="Landing page" />
+              <img
+                class="d"
+                src="shots/home-dark.jpg"
+                alt="Landing page, dark"
+              />
+            </div>
+            <figcaption>The public landing page.</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/screener</u></div>
+              <img class="l" src="shots/screener-light.jpg" alt="Screener" />
+              <img
+                class="d"
+                src="shots/screener-dark.jpg"
+                alt="Screener, dark"
+              />
+            </div>
+            <figcaption>
+              Screener, in the same design system as everything else.
+            </figcaption>
+          </figure>
+        </div>
+
+        <table class="tbl" style="margin-top: 38px">
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>What's included</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Auth</td>
+              <td>
+                Registration, sign-in, sessions per device, revoke one or all,
+                password change
+              </td>
+            </tr>
+            <tr>
+              <td>Accounts</td>
+              <td>Profile, client ID, KYC, bank/UPI accounts, security</td>
+            </tr>
+            <tr>
+              <td>Trading</td>
+              <td>
+                Stocks, options, commodities, watchlists, screener, top movers,
+                charts, alerts
+              </td>
+            </tr>
+            <tr>
+              <td>Positions</td>
+              <td>
+                Carried &amp; intraday legs, margin ledger, M2M, exit / add /
+                partial exit, auto square-off
+              </td>
+            </tr>
+            <tr>
+              <td>Money</td>
+              <td>
+                Wallet, deposits, withdrawals, payout accounts, ledger, order
+                history
+              </td>
+            </tr>
+            <tr>
+              <td>Marketing</td>
+              <td>
+                Hosted landing pages, tracked links, QR codes, referral
+                attribution, pixels
+              </td>
+            </tr>
+            <tr>
+              <td>Admin</td>
+              <td>
+                Users, KYC, finance, trading rules, affiliates, sessions,
+                analytics, audit log
+              </td>
+            </tr>
+            <tr>
+              <td>Experience</td>
+              <td>
+                Light &amp; dark, command palette, toasts, mobile bottom dock,
+                live feed badge
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ═══ ALL SCREENS ═══ -->
+    <section id="screens">
+      <div class="wrap">
+        <div class="sec-head">
+          <span class="eyebrow">Every screen</span>
+          <h2>No placeholder pages.</h2>
+          <p class="lede">
+            The rest of the surface area, as shipped — settings, profile,
+            ledger, news, sign-in for all three audiences, and the landing page
+            on a phone.
+          </p>
+        </div>
+        <div class="grid-3">
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/news</u></div>
+              <img class="l" src="shots/news-light.jpg" alt="News feed" />
+              <img class="d" src="shots/news-dark.jpg" alt="News feed, dark" />
+            </div>
+            <figcaption>Market news</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/topmovers</u></div>
+              <img class="l" src="shots/topmovers-light.jpg" alt="Top movers" />
+              <img
+                class="d"
+                src="shots/topmovers-dark.jpg"
+                alt="Top movers, dark"
+              />
+            </div>
+            <figcaption>Top movers</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/portfolio</u></div>
+              <img class="l" src="shots/portfolio-light.jpg" alt="Portfolio" />
+              <img
+                class="d"
+                src="shots/portfolio-dark.jpg"
+                alt="Portfolio, dark"
+              />
+            </div>
+            <figcaption>Portfolio — holdings, orders, funds</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/ledger</u></div>
+              <img class="l" src="shots/ledger-light.jpg" alt="Ledger" />
+              <img class="d" src="shots/ledger-dark.jpg" alt="Ledger, dark" />
+            </div>
+            <figcaption>Ledger with export</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/profile</u></div>
+              <img class="l" src="shots/profile-light.jpg" alt="Profile" />
+              <img class="d" src="shots/profile-dark.jpg" alt="Profile, dark" />
+            </div>
+            <figcaption>Profile, KYC, banks, security</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/settings</u></div>
+              <img class="l" src="shots/settings-light.jpg" alt="Settings" />
+              <img
+                class="d"
+                src="shots/settings-dark.jpg"
+                alt="Settings, dark"
+              />
+            </div>
+            <figcaption>Theme, density and order defaults</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots"><i></i><i></i><i></i><u>/connect</u></div>
+              <img
+                class="l"
+                src="shots/connect-light.jpg"
+                alt="Connect account"
+              />
+              <img
+                class="d"
+                src="shots/connect-dark.jpg"
+                alt="Connect account, dark"
+              />
+            </div>
+            <figcaption>Connect an account</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/admin/login</u>
+              </div>
+              <img
+                class="l"
+                src="shots/admin-login-light.jpg"
+                alt="Admin sign-in"
+              />
+              <img
+                class="d"
+                src="shots/admin-login-dark.jpg"
+                alt="Admin sign-in, dark"
+              />
+            </div>
+            <figcaption>Operator sign-in, separate from the app</figcaption>
+          </figure>
+          <figure style="margin: 0">
+            <div class="shot">
+              <div class="bar-dots">
+                <i></i><i></i><i></i><u>/partners/profile</u>
+              </div>
+              <img
+                class="l"
+                src="shots/partner-profile-light.jpg"
+                alt="Partner profile"
+              />
+              <img
+                class="d"
+                src="shots/partner-profile-dark.jpg"
+                alt="Partner profile, dark"
+              />
+            </div>
+            <figcaption>Partner profile &amp; payout details</figcaption>
+          </figure>
+        </div>
+
+        <div style="margin-top: 44px">
+          <div class="phones">
+            <div class="phone" style="width: 230px">
+              <div class="frame">
+                <img
+                  class="l"
+                  src="shots/home-mobile.jpg"
+                  alt="Landing page on mobile"
+                />
+                <img class="d" src="shots/home-mobile-dark.jpg" alt="Landing page on mobile" />
+              </div>
+              <div class="label">Landing, on a phone</div>
+            </div>
+            <div class="phone" style="width: 230px">
+              <div class="frame">
+                <img
+                  class="l"
+                  src="shots/partner-links-mobile.jpg"
+                  alt="Partner links on mobile"
+                />
+                <img class="d" src="shots/partner-links-mobile-dark.jpg" alt="Partner links on mobile" />
+              </div>
+              <div class="label">Partner links, mobile</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <footer>
+      <div class="wrap foot-in">
+        <span
+          >TradeStox — trading terminal, admin console &amp; partner
+          platform.</span
+        >
+        <span
+          >Prices are indicative and may differ from the exchange feed.</span
+        >
+      </div>
+    </footer>
+
+    <script>
+      // Toggle every screenshot on the page between its light and dark capture.
+      (function () {
+        var b = document.body,
+          btn = document.getElementById("themeBtn"),
+          lbl = document.getElementById("themeLabel");
+        btn.addEventListener("click", function () {
+          var dark = b.classList.toggle("shots-dark");
+          lbl.textContent = dark ? "Light screenshots" : "Dark screenshots";
+        });
+      })();
+    </script>
+  </body>
+</html>
