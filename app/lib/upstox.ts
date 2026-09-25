@@ -244,6 +244,21 @@ export async function upstoxCandles(
   return j?.data?.candles ?? [];
 }
 
+// Today's candles. The historical endpoint stops at the previous session's
+// close — asking it for a range ending today returns nothing for the current
+// day — so a chart built only from upstoxCandles is always a session behind
+// while the header price is live. This endpoint serves the current session
+// only and takes no date range.
+//
+// Intraday intervals only (1minute, 30minute). `day`/`week` are rejected with
+// HTTP 400, which is why the route synthesises today's daily bar instead.
+export async function upstoxIntradayCandles(key: string, interval = "1minute") {
+  const j: any = await get(
+    `/historical-candle/intraday/${encodeURIComponent(key)}/${interval}`,
+  );
+  return j?.data?.candles ?? [];
+}
+
 // Full OHLC quote for one instrument (open/high/low/close/volume/ltp + depth).
 export async function upstoxFullQuote(key: string) {
   const j: any = await get(
